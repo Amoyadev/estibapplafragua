@@ -94,3 +94,4 @@ python manage.py runserver
 El proyecto es autocontenido: basta copiar la carpeta (sin `.env`), crear el `.env`
 en el equipo destino y ejecutar `docker compose up --build`. Ideal para probar
 infraestructura (Nginx) y demostrar operatividad al cliente.
+# estibapplafragua
