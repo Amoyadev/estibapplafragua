@@ -1,0 +1,139 @@
+{% extends "operaciones/reportes_base.html" %}
+{% block reporte_content %}
+<h3 class="mb-3">Reportes y exportación</h3>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card"><div class="card-body">
+            <h6>Retiros</h6>
+            <p class="small text-muted">ETAs con movimiento de retiro desde puerto.</p>
+            <a href="{% url 'operaciones:exportar_csv' 'retiro' %}" class="btn btn-sm btn-outline-success">Exportar CSV</a>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card"><div class="card-body">
+            <h6>Almacenados</h6>
+            <p class="small text-muted">Contenedores actualmente en depósito.</p>
+            <a href="{% url 'operaciones:exportar_csv' 'almacenados' %}" class="btn btn-sm btn-outline-success">Exportar CSV</a>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card"><div class="card-body">
+            <h6>Entregas</h6>
+            <p class="small text-muted">ETAs despachadas / devueltas.</p>
+            <a href="{% url 'operaciones:exportar_csv' 'entregas' %}" class="btn btn-sm btn-outline-success">Exportar CSV</a>
+        </div></div>
+    </div>
+</div>
+
+<h4 class="mb-3"><i class="bi bi-bar-chart-line"></i> Gráficos</h4>
+<p class="text-muted small mb-3"><i class="bi bi-hand-index"></i> Haz clic en una barra de “Contenedores en depósito por cliente” para ver el detalle del cliente.</p>
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100"><div class="card-body">
+            <h6 class="card-title">Contenedores en depósito por cliente</h6>
+            <canvas id="g1" height="180" style="cursor:pointer;"></canvas>
+        </div></div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100"><div class="card-body">
+            <h6 class="card-title">Tiempo promedio por etapa (días)</h6>
+            <canvas id="g2" height="180"></canvas>
+        </div></div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100"><div class="card-body">
+            <h6 class="card-title">Movimientos por agente portuario</h6>
+            <canvas id="g3" height="180"></canvas>
+        </div></div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100"><div class="card-body">
+            <h6 class="card-title">Carga en depósito por depósito y tipo</h6>
+            <canvas id="g4" height="180"></canvas>
+        </div></div>
+    </div>
+    <div class="col-12">
+        <div class="card"><div class="card-body">
+            <h6 class="card-title">Retiros vs despachos en el tiempo</h6>
+            <canvas id="g5" height="90"></canvas>
+        </div></div>
+    </div>
+</div>
+
+{{ graficos|json_script:"graficos-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const G = JSON.parse(document.getElementById("graficos-data").textContent);
+    const PALETA = ["#0d6efd", "#ffc107", "#198754", "#6c757d", "#0dcaf0", "#212529", "#6610f2", "#fd7e14"];
+    // Plantilla de URL al detalle de cliente; el "/0/" se sustituye por el id real.
+    const URL_CLIENTE = "{% url 'operaciones:reporte_cliente' 0 %}";
+
+    new Chart(document.getElementById("g1"), {
+        type: "bar",
+        data: { labels: G.deposito_cliente.labels, datasets: [{ label: "En depósito", data: G.deposito_cliente.data, backgroundColor: "#0d6efd" }] },
+        options: {
+            plugins: { legend: { display: false } },
+            onClick: function (evt, elements) {
+                if (!elements.length) return;
+                const id = G.deposito_cliente.ids[elements[0].index];
+                if (id) window.location.href = URL_CLIENTE.replace("/0/", "/" + id + "/");
+            }
+        }
+    });
+
+    new Chart(document.getElementById("g2"), {
+        type: "bar",
+        data: { labels: G.tiempo_etapa.labels, datasets: [{ label: "Días", data: G.tiempo_etapa.data, backgroundColor: "#fd7e14" }] },
+        options: { indexAxis: "y", plugins: { legend: { display: false } } }
+    });
+
+    new Chart(document.getElementById("g3"), {
+        type: "bar",
+        data: { labels: G.mov_agente.labels, datasets: [{ label: "Movimientos", data: G.mov_agente.data, backgroundColor: "#198754" }] },
+        options: { plugins: { legend: { display: false } } }
+    });
+
+    new Chart(document.getElementById("g4"), {
+        type: "bar",
+        data: { labels: G.carga_deposito.labels, datasets: G.carga_deposito.datasets.map((d, i) => ({ ...d, backgroundColor: PALETA[i % PALETA.length] })) },
+        options: { scales: { x: { stacked: true }, y: { stacked: true } } }
+    });
+
+    new Chart(document.getElementById("g5"), {
+        type: "line",
+        data: {
+            labels: G.retiro_despacho.labels,
+            datasets: [
+                { label: "Retiros", data: G.retiro_despacho.retiros, borderColor: "#0d6efd", backgroundColor: "#0d6efd", tension: .3 },
+                { label: "Despachos a cliente", data: G.retiro_despacho.despachos_cliente, borderColor: "#198754", backgroundColor: "#198754", tension: .3 },
+                { label: "Despachos a puerto", data: G.retiro_despacho.despachos_puerto, borderColor: "#212529", backgroundColor: "#212529", tension: .3 }
+            ]
+        }
+    });
+})();
+</script>
+
+<div class="card">
+    <div class="card-header">Detalle de ETAs</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>ETA</th><th>Cliente</th><th>Contenedor</th><th>Estado</th><th>Fecha</th></tr></thead>
+            <tbody>
+            {% for eta in etas %}
+                <tr>
+                    <td>{{ eta.numero }}</td>
+                    <td><a href="{% url 'operaciones:reporte_cliente' eta.cliente.pk %}">{{ eta.cliente.nombre }}</a></td>
+                    <td>{{ eta.contenedor.codigo }}</td>
+                    <td>{{ eta.get_estado_display }}</td>
+                    <td>{{ eta.fecha }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="text-muted text-center py-4">Sin datos.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

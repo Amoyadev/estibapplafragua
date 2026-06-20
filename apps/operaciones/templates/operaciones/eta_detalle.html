@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% load op_extras %}
+{% block title %}ETA {{ eta.numero }} — Estibapp{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h3 class="mb-1">
+            <i class="bi bi-box-seam me-1"></i>{{ eta.contenedor.codigo }}
+            <small class="text-muted fs-6">({{ eta.contenedor.get_tipo_display }})</small>
+        </h3>
+        <div class="text-muted small">ETA {{ eta.numero }} · {{ eta.cliente.nombre }}</div>
+    </div>
+    <div class="text-end">
+        <div><span class="badge {{ eta.estado|estado_badge }} fs-6">{{ eta.get_estado_display }}</span></div>
+        <div class="mt-1">
+            <span class="badge {{ eta.ubicacion_fisica|ubicacion_badge }}">
+                <i class="bi bi-geo-alt-fill me-1"></i>{{ eta.ubicacion_fisica }}
+            </span>
+        </div>
+    </div>
+</div>
+
+{% if eta.estado == "SOLICITADO" %}
+<div class="alert alert-warning d-flex align-items-center" role="alert">
+    <i class="bi bi-bell-fill me-2"></i>
+    <div><strong>Solicitado por cliente.</strong> Pendiente de iniciar el proceso: asigna conductor/camión y avanza el estado.</div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Datos de la solicitud</div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between"><span>Cliente</span><strong>{{ eta.cliente.nombre }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Agente portuario</span><strong>{{ eta.agente.nombre }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Contenedor</span><strong>{{ eta.contenedor.codigo }} ({{ eta.contenedor.get_tipo_display }})</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Conductor</span><strong>{{ eta.conductor|default:"—" }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Camión</span><strong>{{ eta.camion.patente|default:"—" }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Depósito</span><strong>{{ eta.deposito|default:"—" }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Ubicación en patio</span><strong>{{ eta.ubicacion|default:"— sin registrar —" }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Fecha / hora retiro</span><strong>{{ eta.fecha }} {{ eta.hora_retiro|default:"" }}</strong></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Tipo de proceso</span><strong>{{ eta.get_tipo_proceso_display }}</strong></li>
+            </ul>
+            <div class="card-body">
+                {% if user|en_grupo:"Administrador,Coordinador" %}
+                <a href="{% url 'operaciones:eta_editar' eta.pk %}" class="btn btn-sm btn-outline-secondary">Editar datos</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">Estado del ciclo</div>
+            <div class="card-body">
+                <div class="dropdown">
+                    <button class="btn {{ eta.estado|estado_btn }} dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-flag-fill"></i> {{ eta.get_estado_display }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><h6 class="dropdown-header">Mover estado a…</h6></li>
+                        {% for e in estados_flujo %}
+                            {% if e.actual %}
+                                <li><span class="dropdown-item active"><span class="badge {{ e.valor|estado_badge }} me-2">&nbsp;</span>{{ e.label }} (actual)</span></li>
+                            {% elif e.pasado %}
+                                <li><span class="dropdown-item text-muted disabled"><span class="badge {{ e.valor|estado_badge }} me-2 opacity-50">&nbsp;</span>{{ e.label }}</span></li>
+                            {% else %}
+                                <li>
+                                    <form method="post" action="{% url 'operaciones:eta_cambiar_estado' eta.pk %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="paso" value="{{ e.idx }}">
+                                        <button type="submit" class="dropdown-item"><span class="badge {{ e.valor|estado_badge }} me-2">&nbsp;</span>{{ e.label }}</button>
+                                    </form>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% if not estado_siguiente %}
+                    <div class="alert alert-dark mt-3 mb-0 py-2">Cierre final: contenedor devuelto a puerto. Ciclo terminado.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if user|en_grupo:"Administrador,Encargado de Patio" %}
+        <div class="card mb-3">
+            <div class="card-header">Ubicación en patio (jefe de patio)</div>
+            <div class="card-body">
+                <form method="post" action="{% url 'operaciones:eta_ubicacion' eta.pk %}" class="d-flex gap-2">
+                    {% csrf_token %}
+                    {{ ubicacion_form.ubicacion }}
+                    <button class="btn btn-outline-primary btn-sm">Guardar</button>
+                </form>
+                <div class="form-text">Registrar cuando el gruero indique por radio la posición del contenedor.</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header">Registrar movimiento manual</div>
+            <div class="card-body">
+                <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}">
+                    {% csrf_token %}
+                    {% for field in mov_form %}
+                        <div class="mb-2">
+                            <label class="form-label small">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                    {% endfor %}
+                    <button class="btn btn-outline-primary btn-sm">Registrar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">Trazabilidad / movimientos</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Tipo</th><th>Fecha</th><th>Empresa responsable</th><th>Observación</th></tr></thead>
+            <tbody>
+            {% for m in movimientos %}
+                <tr>
+                    <td><span class="badge bg-secondary">{{ m.get_tipo_display }}</span></td>
+                    <td>{{ m.fecha }}</td>
+                    <td>{{ m.empresa_responsable|default:"—" }}</td>
+                    <td>{{ m.observacion }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="4" class="text-muted text-center py-3">Sin movimientos registrados.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+# =====================================================================
+# docker-compose.override.yml  ·  SOLO DESARROLLO
+# ---------------------------------------------------------------------
+# Docker Compose aplica este archivo AUTOMÁTICAMENTE en local (junto al
+# docker-compose.yml). En el servidor de PRODUCCIÓN este archivo NO debe
+# existir, o se omite levantando solo el base:
+#       docker compose -f docker-compose.yml up -d
+#
+# Qué hace en dev:
+#   - Monta el código del host en /app (bind-mount) → los cambios en .py
+#     y plantillas se ven al instante, SIN reconstruir la imagen.
+#   - Usa `runserver` con autrecarga en vez de Gunicorn.
+#   - Fuerza el entorno de desarrollo (DEBUG=True).
+# La imagen "horneada" (build: .) sigue intacta para producción.
+# =====================================================================
+
+services:
+  web:
+    build: .
+    environment:
+      - DJANGO_ENV=dev
+      - DJANGO_SETTINGS_MODULE=config.settings.dev
+    # Reemplaza el entrypoint de producción (Gunicorn) por uno de dev.
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python manage.py wait_for_db &&
+       python manage.py migrate --noinput &&
+       python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      # Código en vivo. Las rutas de venv/artefactos del host no afectan
+      # porque el contenedor usa su propio Python del sistema.
+      - .:/app

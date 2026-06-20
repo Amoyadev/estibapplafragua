@@ -1,0 +1,83 @@
+{% load op_extras %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Estibapp{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { background:#f4f6f9; }
+        .navbar-brand { font-weight:700; }
+        .sidebar .nav-link { color:#cdd5df; }
+        .sidebar .nav-link.active, .sidebar .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); border-radius:.4rem; }
+        .badge-estado { font-size:.75rem; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark px-3">
+    <a class="navbar-brand" href="{% url 'operaciones:dashboard' %}">🛳️ Estibapp</a>
+    <div class="d-flex align-items-center text-light">
+        {% if user.is_authenticated %}
+            <span class="me-3 small">{{ user.get_full_name|default:user.username }}</span>
+            <form method="post" action="{% url 'logout' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-light">Salir</button>
+            </form>
+        {% else %}
+            <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Ingresar</a>
+        {% endif %}
+    </div>
+</nav>
+
+<div class="container-fluid">
+    <div class="row">
+        {% if user.is_authenticated %}
+        <aside class="col-md-2 sidebar bg-dark text-light py-3 min-vh-100">
+            <ul class="nav flex-column">
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:dashboard' %}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:tablero' %}"><i class="bi bi-grid-1x2"></i> Tablero del día</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:contenedor_buscar' %}"><i class="bi bi-search"></i> Buscar contenedor</a></li>
+                {% if user|en_grupo:"Administrador,Coordinador" %}
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:bandeja' %}"><i class="bi bi-inbox"></i> Bandeja</a></li>
+                {% endif %}
+                {% if user|en_grupo:"Administrador,Encargado de Patio" %}
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:patio' %}"><i class="bi bi-truck"></i> Patio</a></li>
+                {% endif %}
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:recuentos' %}"><i class="bi bi-bar-chart"></i> Recuentos</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:reportes' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Reportes</a></li>
+                {% if user|en_grupo:"Administrador,Coordinador" %}
+                <li class="nav-item mt-2"><span class="text-secondary small ps-2">Mantenedor</span></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:cliente_list' %}">Clientes</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:empresa_list' %}">Empresas</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:conductor_list' %}">Conductores</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:camion_list' %}">Camiones</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:agente_list' %}">Agentes portuarios</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:contenedor_list' %}">Contenedores</a></li>
+                {% endif %}
+                {% if user.is_superuser %}
+                <li class="nav-item mt-2"><a class="nav-link" href="/admin/"><i class="bi bi-gear"></i> Admin Django <span class="badge bg-secondary ms-1">dev</span></a></li>
+                {% endif %}
+            </ul>
+        </aside>
+        <main class="col-md-10 py-4 px-4">
+        {% else %}
+        <main class="col-12 py-4 px-4">
+        {% endif %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

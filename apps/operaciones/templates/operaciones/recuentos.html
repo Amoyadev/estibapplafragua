@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Recuentos — Estibapp{% endblock %}
+{% block content %}
+<h3 class="mb-3">Recuentos por cliente</h3>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card text-bg-secondary"><div class="card-body">
+            <div class="small">Total en puerto</div><div class="fs-2 fw-bold">{{ total_puerto }}</div>
+        </div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card text-bg-success"><div class="card-body">
+            <div class="small">Total en depósito</div><div class="fs-2 fw-bold">{{ total_deposito }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Por cliente</div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Cliente</th><th class="text-center">En puerto</th><th class="text-center">En depósito</th></tr></thead>
+            <tbody>
+            {% for c in por_cliente %}
+                <tr>
+                    <td>{{ c.nombre }}</td>
+                    <td class="text-center">{{ c.en_puerto }}</td>
+                    <td class="text-center">{{ c.en_deposito }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="3" class="text-muted text-center py-4">Sin datos.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">Últimas ETAs</div>
+            <ul class="list-group list-group-flush">
+            {% for eta in ultimas_etas %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><a href="{% url 'operaciones:eta_detalle' eta.pk %}">{{ eta.numero }}</a> · {{ eta.cliente.nombre }}</span>
+                    <span class="badge bg-info text-dark">{{ eta.get_estado_display }}</span>
+                </li>
+            {% empty %}
+                <li class="list-group-item text-muted">Sin ETAs.</li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">Últimos contenedores en puerto</div>
+            <ul class="list-group list-group-flush">
+            {% for eta in ultimos_en_puerto %}
+                <li class="list-group-item">
+                    <strong>{{ eta.contenedor.codigo }}</strong> · {{ eta.cliente.nombre }}
+                    <span class="text-muted small d-block">{{ eta.numero }} · {{ eta.get_estado_display }}</span>
+                </li>
+            {% empty %}
+                <li class="list-group-item text-muted">Nada en puerto.</li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">Últimos contenedores en depósito</div>
+            <ul class="list-group list-group-flush">
+            {% for eta in ultimos_en_deposito %}
+                <li class="list-group-item">
+                    <strong>{{ eta.contenedor.codigo }}</strong> · {{ eta.cliente.nombre }}
+                    <span class="text-muted small d-block">{{ eta.numero }} · {{ eta.ubicacion|default:"sin ubicación" }}</span>
+                </li>
+            {% empty %}
+                <li class="list-group-item text-muted">Nada en depósito.</li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
