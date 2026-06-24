@@ -66,13 +66,12 @@
 <script>
 (function () {
     const G = JSON.parse(document.getElementById("graficos-data").textContent);
-    const PALETA = ["#0d6efd", "#ffc107", "#198754", "#6c757d", "#0dcaf0", "#212529", "#6610f2", "#fd7e14"];
-    // Plantilla de URL al detalle de cliente; el "/0/" se sustituye por el id real.
+    const PALETA = ["#CC0000", "#555555", "#888888", "#e86161", "#bbbbbb", "#333333", "#ff4444", "#aaaaaa"];
     const URL_CLIENTE = "{% url 'operaciones:reporte_cliente' 0 %}";
 
     new Chart(document.getElementById("g1"), {
         type: "bar",
-        data: { labels: G.deposito_cliente.labels, datasets: [{ label: "En depósito", data: G.deposito_cliente.data, backgroundColor: "#0d6efd" }] },
+        data: { labels: G.deposito_cliente.labels, datasets: [{ label: "En depósito", data: G.deposito_cliente.data, backgroundColor: "#CC0000" }] },
         options: {
             plugins: { legend: { display: false } },
             onClick: function (evt, elements) {
@@ -85,13 +84,13 @@
 
     new Chart(document.getElementById("g2"), {
         type: "bar",
-        data: { labels: G.tiempo_etapa.labels, datasets: [{ label: "Días", data: G.tiempo_etapa.data, backgroundColor: "#fd7e14" }] },
+        data: { labels: G.tiempo_etapa.labels, datasets: [{ label: "Días", data: G.tiempo_etapa.data, backgroundColor: "#555555" }] },
         options: { indexAxis: "y", plugins: { legend: { display: false } } }
     });
 
     new Chart(document.getElementById("g3"), {
         type: "bar",
-        data: { labels: G.mov_agente.labels, datasets: [{ label: "Movimientos", data: G.mov_agente.data, backgroundColor: "#198754" }] },
+        data: { labels: G.mov_agente.labels, datasets: [{ label: "Movimientos", data: G.mov_agente.data, backgroundColor: "#888888" }] },
         options: { plugins: { legend: { display: false } } }
     });
 
@@ -106,9 +105,9 @@
         data: {
             labels: G.retiro_despacho.labels,
             datasets: [
-                { label: "Retiros", data: G.retiro_despacho.retiros, borderColor: "#0d6efd", backgroundColor: "#0d6efd", tension: .3 },
-                { label: "Despachos a cliente", data: G.retiro_despacho.despachos_cliente, borderColor: "#198754", backgroundColor: "#198754", tension: .3 },
-                { label: "Despachos a puerto", data: G.retiro_despacho.despachos_puerto, borderColor: "#212529", backgroundColor: "#212529", tension: .3 }
+                { label: "Retiros", data: G.retiro_despacho.retiros, borderColor: "#CC0000", backgroundColor: "#CC0000", tension: .3 },
+                { label: "Despachos a cliente", data: G.retiro_despacho.despachos_cliente, borderColor: "#555555", backgroundColor: "#555555", tension: .3 },
+                { label: "Despachos a puerto", data: G.retiro_despacho.despachos_puerto, borderColor: "#aaaaaa", backgroundColor: "#aaaaaa", tension: .3 }
             ]
         }
     });

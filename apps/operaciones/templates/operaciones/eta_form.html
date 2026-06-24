@@ -95,7 +95,17 @@
         </div></div>
     </div>
 
-    <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Guardar</button>
-    <a href="javascript:history.back()" class="btn btn-link">Cancelar</a>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Guardar</button>
+        <a href="javascript:history.back()" class="btn btn-link">Cancelar</a>
+        {% if object %}
+        <a href="https://wa.me/" target="_blank"
+           class="btn btn-sm ms-auto"
+           style="background:#25D366; color:#fff; border-color:#1fba57;"
+           title="Función disponible próximamente">
+            <i class="bi bi-whatsapp"></i> Contactar por WhatsApp
+        </a>
+        {% endif %}
+    </div>
 </form>
 {% endblock %}

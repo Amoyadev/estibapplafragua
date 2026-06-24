@@ -1,11 +1,11 @@
-# 🚀 DESPLIEGUE.md — Cómo montar Estibapp paso a paso
+# 🚀 DESPLIEGUE.md — Montaje y operación de Estibapp
 
 Guía pensada para alguien que **nunca** ha desplegado una aplicación. Se explica
 desde cero qué es cada pieza y se entregan **tres caminos** de montaje:
 
 - **Opción A — Otro computador con Docker** (la más simple, recomendada para empezar).
 - **Opción B — Seenode (PaaS)**: subes el repo y la plataforma lo levanta.
-- **Opción C — DigitalOcean (VPS/Droplet)**: un servidor propio en internet con dominio y HTTPS.
+- **Opción C — DigitalOcean (VPS/Droplet)**: servidor propio en internet con dominio y HTTPS.
 
 ---
 
@@ -118,6 +118,16 @@ Esto levanta 3 contenedores: **db**, **web** y **nginx**. El `entrypoint.sh`
 espera a la base de datos, aplica migraciones y recolecta archivos estáticos
 automáticamente.
 
+**Volúmenes de Docker** (el "almacenaje" que no hay que encender manualmente):
+
+| Volumen | Para qué sirve | Persiste al apagar |
+|---------|---------------|-------------------|
+| `postgres_data` | Base de datos PostgreSQL (clientes, ETAs, etc.) | **Sí** |
+| `static_volume` | Archivos estáticos (CSS/JS) que sirve Nginx | Sí |
+| `media_volume`  | Archivos subidos por usuarios | Sí |
+
+Solo se borran si ejecutas `docker compose down -v` (la `-v` elimina los volúmenes).
+
 ### Paso 4 — Crear el usuario administrador
 ```powershell
 docker compose exec web python manage.py createsuperuser
@@ -138,13 +148,16 @@ Los roles se manejan con **Grupos** de Django (ya creados por la migración):
 3. En **Groups**, asígnale uno de los tres grupos.
 4. Guarda. Ese usuario verá solo lo que su rol permite.
 
-### Comandos útiles
+### Comandos del día a día
 ```powershell
-docker compose ps             # ver estado de los contenedores
-docker compose logs -f web    # ver registros de la app en vivo
-docker compose down           # detener todo (los datos se conservan)
-docker compose down -v        # detener y BORRAR la base de datos (¡cuidado!)
-docker compose up --build -d  # reconstruir tras cambios de código
+docker compose ps                    # ver estado de los contenedores
+docker compose logs -f web           # ver registros de la app en vivo
+docker compose down                  # detener todo (los datos se conservan)
+docker compose down -v               # detener y BORRAR la base de datos (¡cuidado!)
+docker compose up --build -d         # reconstruir tras cambios de código
+docker compose exec web python manage.py migrate          # aplicar migraciones
+docker compose exec web python manage.py seed_demo        # cargar datos de prueba
+docker compose exec web python manage.py seed_demo --reset  # resetear datos demo
 ```
 
 ---
@@ -183,77 +196,356 @@ levanta por ti. Tú no administras Nginx ni el sistema operativo.
 
 ---
 
-## 5. OPCIÓN C — DigitalOcean (servidor propio con dominio y HTTPS)
+## 5. OPCIÓN C — DigitalOcean / Producción actual
 
 Para cuando quieres un servidor en internet, con tu dominio y candado HTTPS.
 Usaremos un **Droplet** (máquina virtual Linux) + Docker.
 
-### Paso 1 — Crear el Droplet
-1. Crea cuenta en https://www.digitalocean.com
-2. **Create → Droplets**:
-   - Imagen: **Ubuntu 24.04 LTS**.
-   - Plan: **Basic**, 2 GB RAM mínimo recomendado.
-   - Autenticación: **SSH key** (más segura que contraseña).
-3. Anota la **IP pública** del Droplet.
+### 5.1 Datos del servidor actual (producción)
 
-### Paso 2 — Apuntar tu dominio
-En tu proveedor de dominio crea un registro **A**:
 ```
-tipo: A    nombre: @ (o app)    valor: <IP del Droplet>
-```
-Espera unos minutos a que propague.
+=== Droplet ===
+IP:       209.97.149.174
+Region:   NYC3
+OS:       Ubuntu 24.04 LTS
+SSH:      root@209.97.149.174  (clave ED25519, sin passphrase)
+Ruta:     /opt/estiba-app
 
-### Paso 3 — Entrar al servidor e instalar Docker
+=== PostgreSQL (producción) ===
+Host:     db (interno Docker)
+DB:       estiba
+User:     estiba
+Pass:     estibapp2026
+Port:     5432
+
+=== Django (producción) ===
+Settings: config.settings.prod
+Debug:    False
+Hosts:    estibapplafragua.cl, www.estibapplafragua.cl
+SECRET_KEY: en el .env del droplet
+
+=== Accesos web ===
+Sitio:    http://209.97.149.174  (HTTP, hasta configurar SSL)
+Admin:    http://209.97.149.174/admin
+Dominio:  estibapplafragua.cl  (DNS en proceso)
+HTTPS:    pendiente (ver sección 5.4)
+```
+
+> ⚠️ Estas credenciales son de producción. No compartir ni subir a Git.
+
+### 5.2 Montar desde cero (Droplet nuevo)
+
 ```bash
-ssh root@<IP del Droplet>
+# 1. Entrar al servidor
+ssh root@209.97.149.174
 
-# Instalar Docker + Compose
+# 2. Instalar Docker + Compose
 curl -fsSL https://get.docker.com | sh
-```
 
-### Paso 4 — Subir el proyecto
-Desde tu PC (o clonando con Git en el servidor):
-```bash
-# opción git:
-git clone <url-del-repo> estibapp
-cd estibapp
-```
+# 3. Clonar el proyecto
+git clone <url-del-repo> /opt/estiba-app
+cd /opt/estiba-app
 
-### Paso 5 — Crear el `.env` de producción
-```bash
+# 4. Crear .env de producción
 cp .env.example .env
 nano .env
-```
-Pon `DJANGO_ENV=prod`, una `DJANGO_SECRET_KEY` larga y
-`DJANGO_ALLOWED_HOSTS=tu-dominio.com,www.tu-dominio.com`.
+# Pon DJANGO_ENV=prod, SECRET_KEY larga, ALLOWED_HOSTS=tu-dominio.com
 
-### Paso 6 — Levantar la app
-```bash
+# 5. Levantar
 docker compose up --build -d
-docker compose exec web python manage.py createsuperuser
 ```
-Ya responde en `http://tu-dominio.com/app/`.
 
-### Paso 7 — Activar HTTPS (candado verde)
-La forma más simple es poner **Caddy** o **Nginx + Certbot** delante. Con
-Certbot sobre el Nginx del servidor:
-```bash
-sudo apt install certbot python3-certbot-nginx -y
-sudo certbot --nginx -d tu-dominio.com -d www.tu-dominio.com
+Para apuntar el dominio: crea un registro **A** en tu proveedor de dominio:
 ```
-Certbot obtiene el certificado de Let's Encrypt y configura la redirección a HTTPS.
+tipo: A    nombre: @    valor: 209.97.149.174
+```
 
-> Alternativa moderna: usar **Caddy** como proxy, que gestiona HTTPS solo.
+### 5.3 Crear superadmin (producción)
 
-### Paso 8 — Mantenimiento
 ```bash
-docker compose logs -f web        # ver logs
-git pull && docker compose up --build -d   # actualizar tras nuevos cambios
+ssh root@209.97.149.174
+cd /opt/estiba-app
+docker exec -it estiba_web python manage.py createsuperuser
+```
+
+Datos de ejemplo:
+```
+Username: admin
+Email:    admin@estibapplafragua.cl
+Password: [mínimo 16 caracteres, guardar en gestor de contraseñas]
+```
+
+Acceso: `http://209.97.149.174/admin`
+
+### 5.4 Activar HTTPS con Let's Encrypt (Certbot)
+
+**Prerrequisito:** el dominio debe apuntar al droplet antes de correr certbot.
+
+```bash
+# Verificar que el DNS ya propagó
+dig estibapplafragua.cl @8.8.8.8
+# Debe mostrar 209.97.149.174
+
+# Entrar al servidor
+ssh root@209.97.149.174
+
+# Instalar certbot
+sudo apt-get update && sudo apt-get install -y certbot python3-certbot-nginx
+
+# Generar certificado
+sudo certbot certonly --standalone \
+  -d estibapplafragua.cl \
+  -d www.estibapplafragua.cl \
+  --agree-tos \
+  --email admin@estibapplafragua.cl \
+  --non-interactive
+
+# Verificar que quedaron los archivos
+sudo ls /etc/letsencrypt/live/estibapplafragua.cl/
+# Deben existir: fullchain.pem  privkey.pem
+
+# Configurar renovación automática (90 días)
+sudo systemctl enable certbot.timer && sudo systemctl start certbot.timer
+```
+
+Actualizar `/opt/estiba-app/nginx/default.conf` con la configuración HTTPS completa:
+
+```nginx
+# Redirigir HTTP → HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name estibapplafragua.cl www.estibapplafragua.cl;
+    return 301 https://$server_name$request_uri;
+}
+
+# HTTPS
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name estibapplafragua.cl www.estibapplafragua.cl;
+
+    ssl_certificate     /etc/letsencrypt/live/estibapplafragua.cl/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/estibapplafragua.cl/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    upstream estiba_web { server web:8000; }
+
+    location / {
+        proxy_pass http://estiba_web;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /static/ {
+        alias /app/staticfiles/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /media/ {
+        alias /app/media/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location ~ /\.env { deny all; }
+}
+```
+
+Recargar nginx:
+```bash
+ssh root@209.97.149.174 'cd /opt/estiba-app && docker compose restart nginx'
+```
+
+Verificar:
+```bash
+curl -I https://estibapplafragua.cl        # debe responder HTTP/2 200
+curl -I http://estibapplafragua.cl         # debe responder 301 redirect a https://
+```
+
+Si el certificado expira o hay que renovar manualmente:
+```bash
+ssh root@209.97.149.174 'sudo certbot renew --force-renewal && docker restart estiba_nginx'
 ```
 
 ---
 
-## 6. Lista de verificación post-despliegue
+## 6. Flujo de cambios local → producción
+
+### Script de deploy (recomendado)
+
+Crear `/opt/estiba-app/deploy.sh` en el droplet:
+
+```bash
+#!/bin/bash
+set -e
+
+echo "[deploy] Actualizando código..."
+git pull origin main
+
+echo "[deploy] Reconstruyendo imagen..."
+docker compose down
+docker compose up -d --build
+
+echo "[deploy] Aplicando migraciones..."
+docker exec estiba_web python manage.py migrate --noinput
+
+echo "[deploy] Recolectando archivos estáticos..."
+docker exec estiba_web python manage.py collectstatic --noinput
+
+echo "[deploy] Estado final..."
+docker ps --filter "status=running"
+echo "✅ Deploy completado"
+```
+
+Ejecutar desde tu PC:
+```bash
+ssh root@209.97.149.174 'bash /opt/estiba-app/deploy.sh'
+```
+
+### Escenario A — Cambio de templates o CSS
+
+```bash
+# Local
+git add . && git commit -m "fix: corrección en template home" && git push origin main
+
+# Droplet (solo restart, sin rebuild)
+ssh root@209.97.149.174 'cd /opt/estiba-app && git pull origin main && docker compose restart estiba_web'
+```
+
+### Escenario B — Cambio en modelos (nuevas migraciones)
+
+```bash
+# Local: crear la migración
+docker compose exec web python manage.py makemigrations operaciones
+git add . && git commit -m "feat: nuevo campo en Empresa" && git push origin main
+
+# Droplet: rebuild + migrate
+ssh root@209.97.149.174 'cd /opt/estiba-app && \
+git pull origin main && \
+docker compose down && docker compose up -d --build && \
+docker exec estiba_web python manage.py migrate --noinput'
+```
+
+### Escenario C — Nuevo paquete Python (requirements.txt)
+
+```bash
+# Local
+pip install celery && pip freeze > requirements.txt
+git add requirements.txt && git commit -m "feat: add celery" && git push origin main
+
+# Droplet: rebuild (reconstruye la imagen con el nuevo paquete)
+ssh root@209.97.149.174 'cd /opt/estiba-app && git pull && docker compose down && docker compose up -d --build'
+```
+
+### Escenario D — Cambio en configuración (settings)
+
+```bash
+# Local
+git add config/settings/prod.py && git commit -m "config: ajuste logging" && git push origin main
+
+# Droplet
+ssh root@209.97.149.174 'cd /opt/estiba-app && git pull && docker compose down && docker compose up -d --build'
+```
+
+---
+
+## 7. Mantenimiento y monitoreo
+
+### Estado de contenedores
+
+```bash
+ssh root@209.97.149.174 'docker ps --format "table {{.Names}}\t{{.Status}}"'
+```
+
+Esperado:
+```
+estiba_nginx    Up X minutes
+estiba_web      Up X minutes
+estiba_db       Up X minutes (healthy)
+```
+
+### Logs en vivo
+
+```bash
+ssh root@209.97.149.174 'docker logs -f estiba_web --tail 50'    # Django
+ssh root@209.97.149.174 'docker logs -f estiba_nginx --tail 50'  # Nginx
+ssh root@209.97.149.174 'docker logs -f estiba_db --tail 50'     # PostgreSQL
+```
+
+### Backup de base de datos
+
+```bash
+# Hacer backup
+ssh root@209.97.149.174 'docker exec estiba_db pg_dump -U estiba estiba > \
+/opt/estiba-app/backups/estiba_$(date +%Y%m%d_%H%M%S).sql'
+
+# Restaurar
+ssh root@209.97.149.174 'cat backup.sql | docker exec -i estiba_db psql -U estiba estiba'
+
+# Conectar a la BD directamente
+ssh root@209.97.149.174 'docker exec -it estiba_db psql -U estiba -d estiba'
+```
+
+### Otros comandos útiles
+
+```bash
+# Collectstatic (si cambiaron CSS/JS)
+ssh root@209.97.149.174 'docker exec estiba_web python manage.py collectstatic --noinput'
+
+# Limpiar imágenes/capas viejas de Docker
+ssh root@209.97.149.174 'docker system prune -af'
+
+# Ver recursos del servidor
+ssh root@209.97.149.174 'docker stats'
+```
+
+---
+
+## 8. Troubleshooting
+
+| Síntoma | Causa probable | Solución |
+|---------|----------------|----------|
+| `Bad Request (400)` | El dominio no está en `ALLOWED_HOSTS`. | Agrégalo en `.env` y `docker compose up -d`. |
+| `502 Bad Gateway` | Django no está corriendo o Nginx no llega a web:8000. | Ver logs: `docker logs estiba_web \| tail -30`. Si está down: `docker compose up -d`. |
+| Sin estilos | Faltó `collectstatic`. | `docker compose exec web python manage.py collectstatic --noinput` |
+| `could not translate host name "db"` | Estás corriendo fuera de Docker. | Dentro de Docker el host es `db`; fuera, usa `localhost`. |
+| No puedo entrar | El usuario no tiene grupo. | Asigna un grupo en `/admin/`. |
+| Cambié código y no se ve | La imagen es vieja. | `docker compose up --build -d`. |
+| `PermissionError` en logs | Problema de permisos en `/app/logs`. | Ya resuelto con try-except en `config/settings/base.py`. Si reaparece: `docker exec estiba_web chmod -R 775 /app/logs` |
+| `Connection refused` a BD | PostgreSQL container no está corriendo. | `docker compose restart estiba_db` y esperar 10s. |
+| SSL expirado | Certbot no renovó. | `sudo certbot renew --force-renewal && docker restart estiba_nginx` |
+| Cambios no aparecen tras `git pull` | Archivos Python cacheados en Docker. | `docker compose down && docker compose up -d --build` |
+
+---
+
+## 9. Estado del ambiente de desarrollo (dev local)
+
+| Servicio | Contenedor | Imagen | Puertos |
+|----------|-----------|--------|---------|
+| Base de datos | `estiba_db` | `postgres:16-alpine` | 5432 (interno) |
+| Web (Django) | `estiba_web` | `app-web` | 8000 (interno) |
+| Reverse proxy | `estiba_nginx` | `nginx:1.27-alpine` | `0.0.0.0:80->80` |
+
+- Settings activos en dev: `config.settings.dev` (`DEBUG=True`).
+- El `docker-compose.override.yml` aplica automáticamente en dev: bind-mount del código + `runserver` (sin reconstruir imagen en cada cambio).
+- Usuarios QA (clave `Estibapp2025*`): `QA_Administrador`, `QA_Coordinador`, `QA_Patio`.
+- App: `http://localhost/` · Admin: `http://localhost/admin/` · Reportes: `http://localhost/app/reportes/`
+
+---
+
+## 10. Lista de verificación post-despliegue
 
 - [ ] `http://<host>/app/` carga el dashboard tras iniciar sesión.
 - [ ] El superusuario puede entrar al admin (`/admin/`).
@@ -263,53 +555,37 @@ git pull && docker compose up --build -d   # actualizar tras nuevos cambios
 - [ ] El botón **Avanzar** mueve la ETA de estado y registra el movimiento.
 - [ ] Los reportes exportan CSV (se abre bien en Excel, con acentos).
 - [ ] En producción (`DJANGO_ENV=prod`) el sitio va por HTTPS.
+- [ ] Superadmin creado y acceso a `/admin/` confirmado.
+- [ ] Certificado SSL generado y renovación automática activa.
+- [ ] Backup de BD programado.
 
 ---
 
-## 7. Problemas frecuentes
-
-| Síntoma | Causa probable | Solución |
-|---------|----------------|----------|
-| `Bad Request (400)` | El dominio no está en `DJANGO_ALLOWED_HOSTS`. | Agrégalo en `.env` y `docker compose up -d`. |
-| La página se ve sin estilos | Faltó `collectstatic`. | `docker compose exec web python manage.py collectstatic --noinput`. |
-| `could not translate host name "db"` | Estás corriendo fuera de Docker. | Dentro de Docker el host es `db`; fuera, usa `localhost`. |
-| No puedo entrar | El usuario no tiene grupo. | Asigna un grupo en `/admin/`. |
-| Cambié código y no se ve | La imagen es vieja. | `docker compose up --build -d`. |
-
----
-
-## 8. Modo DEBUG y páginas de error (404, 500…)
-
-Django tiene dos modos, controlados por `DEBUG`:
+## 11. Modo DEBUG y páginas de error (404, 500…)
 
 | `DEBUG` | Para qué sirve | Qué muestra ante un error |
 |---------|----------------|---------------------------|
-| `True`  | **Desarrollo**. Recarga sola, errores detallados. | Pantalla amarilla técnica de Django (útil para programar). |
-| `False` | **Producción / vista real**. | Las páginas con estilo del proyecto: `templates/404.html`, etc. |
+| `True`  | **Desarrollo**. Recarga sola, errores detallados. | Pantalla amarilla técnica de Django. |
+| `False` | **Producción / vista real**. | Páginas con estilo: `templates/404.html`, etc. |
 
-> En desarrollo (`config/settings/dev.py`) `DEBUG=True`, por eso ves la pantalla
-> amarilla y **no** la página 404 personalizada. La 404 de marca solo aparece con
-> `DEBUG=False` (que es lo normal en producción, `config/settings/prod.py`).
+> En desarrollo `DEBUG=True`, por eso ves la pantalla amarilla y **no** la página
+> 404 personalizada. La 404 de marca solo aparece con `DEBUG=False` (producción).
 
 **Ver las páginas de error con su estilo real en local (temporal):**
 
 ```powershell
-# 1. Poner DEBUG=False en config/settings/dev.py  (DEBUG = False)
+# 1. Poner DEBUG=False en config/settings/dev.py
 # 2. Recolectar estáticos (obligatorio con DEBUG=False):
 docker compose exec web python manage.py collectstatic --noinput
 docker compose restart web
-# 3. Abrir una ruta inexistente, p. ej. http://localhost/no-existe
+# 3. Abrir una ruta inexistente: http://localhost/no-existe
 ```
 
-**Volver a desarrollo:** reponer `DEBUG = True` en `config/settings/dev.py` (runserver
-recarga solo). En este modo `runserver` vuelve a servir los estáticos automáticamente.
-
-> La página 404 (`templates/404.html`) usa CSS por CDN y un botón **Volver al ingreso**,
-> por lo que se ve aunque no se haya hecho `collectstatic`.
+**Volver a desarrollo:** reponer `DEBUG = True` en `config/settings/dev.py`.
 
 ---
 
-**Resumen de un vistazo (Opción A):**
+**Resumen rápido (Opción A):**
 ```powershell
 Copy-Item .env.example .env      # 1. configurar
 # editar .env (SECRET_KEY, ALLOWED_HOSTS, contraseñas)

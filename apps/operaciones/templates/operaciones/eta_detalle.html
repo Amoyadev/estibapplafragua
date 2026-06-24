@@ -42,9 +42,17 @@
                 <li class="list-group-item d-flex justify-content-between"><span>Fecha / hora retiro</span><strong>{{ eta.fecha }} {{ eta.hora_retiro|default:"" }}</strong></li>
                 <li class="list-group-item d-flex justify-content-between"><span>Tipo de proceso</span><strong>{{ eta.get_tipo_proceso_display }}</strong></li>
             </ul>
-            <div class="card-body">
+            <div class="card-body d-flex gap-2 flex-wrap">
                 {% if user|en_grupo:"Administrador,Coordinador" %}
-                <a href="{% url 'operaciones:eta_editar' eta.pk %}" class="btn btn-sm btn-outline-secondary">Editar datos</a>
+                <a href="{% url 'operaciones:eta_editar' eta.pk %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-pencil-square"></i> Editar datos
+                </a>
+                <a href="https://wa.me/" target="_blank"
+                   class="btn btn-sm"
+                   style="background:#25D366; color:#fff; border-color:#1fba57;"
+                   title="Función disponible próximamente">
+                    <i class="bi bi-whatsapp"></i> Contactar por WhatsApp
+                </a>
                 {% endif %}
             </div>
         </div>
@@ -98,17 +106,85 @@
         {% endif %}
 
         <div class="card">
-            <div class="card-header">Registrar movimiento manual</div>
+            <div class="card-header fw-semibold">
+                <i class="bi bi-clipboard-check me-1"></i> Registrar movimiento manual operativo
+            </div>
             <div class="card-body">
-                <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}">
+                {# Flujo de estados del ciclo (informativo) #}
+                <div class="mb-3">
+                    <p class="small text-muted mb-1">Flujo del contenedor:</p>
+                    <div class="d-flex flex-wrap gap-1 align-items-center">
+                        {% for paso in flujo_pasos %}
+                            <span class="badge {% if paso.estado == eta.estado %}text-white{% else %}text-muted border{% endif %} small"
+                                  style="{% if paso.estado == eta.estado %}background:#CC0000;{% else %}background:#f0f0f0; color:#555;{% endif %}">
+                                {{ paso.label }}
+                            </span>
+                            {% if not forloop.last %}<i class="bi bi-arrow-right small text-muted"></i>{% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}" id="form-movimiento">
                     {% csrf_token %}
-                    {% for field in mov_form %}
-                        <div class="mb-2">
-                            <label class="form-label small">{{ field.label }}</label>
-                            {{ field }}
+
+                    {# Tipo #}
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Tipo (estado del contenedor en el ciclo)</label>
+                        {{ mov_form.tipo }}
+                    </div>
+
+                    {# Fecha agendada por coordinador #}
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Fecha agendada</label>
+                        {{ mov_form.fecha }}
+                    </div>
+
+                    {# Empresa responsable — solo dato, sin cambio #}
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Empresa responsable</label>
+                        <input type="hidden" name="{{ mov_form.empresa_responsable.html_name }}"
+                               value="{{ mov_form.empresa_responsable.value|default:'' }}">
+                        <div class="form-control-plaintext small border rounded px-2 py-1 bg-light">
+                            {{ eta.conductor.empresa|default:"— sin empresa asignada —" }}
                         </div>
-                    {% endfor %}
-                    <button class="btn btn-outline-primary btn-sm">Registrar</button>
+                    </div>
+
+                    {# Camión / Conductor — visible solo para Retiro (Ida a puerto) #}
+                    <div id="bloque-transporte" class="mb-2" style="display:none;">
+                        <div class="alert alert-light border-start border-danger border-3 py-2 small mb-2">
+                            <i class="bi bi-truck me-1"></i><strong>Ida a puerto</strong> — asigna camión y conductor para este movimiento.
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small fw-semibold">Camión</label>
+                                <select name="camion_mov" class="form-select form-select-sm">
+                                    <option value="">— seleccionar —</option>
+                                    {% for c in camiones %}
+                                        <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-semibold">Conductor</label>
+                                <select name="conductor_mov" class="form-select form-select-sm">
+                                    <option value="">— seleccionar —</option>
+                                    {% for c in conductores %}
+                                        <option value="{{ c.pk }}" {% if eta.conductor_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# Observación #}
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Observación <span class="text-muted">(mensaje al conductor / equipo)</span></label>
+                        {{ mov_form.observacion }}
+                    </div>
+
+                    <button class="btn btn-sm text-white" style="background:#CC0000; border-color:#990000;">
+                        <i class="bi bi-check2-circle"></i> Registrar movimiento
+                    </button>
                 </form>
             </div>
         </div>
@@ -135,4 +211,19 @@
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+    var sel = document.querySelector('#form-movimiento select[name="tipo"]');
+    var bloque = document.getElementById('bloque-transporte');
+    if (!sel || !bloque) return;
+    function toggle(){
+        bloque.style.display = sel.value === 'RETIRO' ? '' : 'none';
+    }
+    sel.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
 {% endblock %}

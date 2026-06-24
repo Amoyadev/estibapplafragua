@@ -421,8 +421,6 @@ class ETADetail(CualquierRol, DetailView):
         ctx["ubicacion_form"] = PatioUbicacionForm(instance=self.object)
         # Pasos del ciclo en formato "tipo Jira": indica cuáles ya se
         # recorrieron, el actual y los que quedan por delante (clicables).
-        # Se usa FLUJO_PASOS porque ALMACENADO aparece dos veces (inicial y
-        # retorno del cliente); el índice de paso lo resuelve la ETA.
         actual_idx = self.object.paso_actual_idx()
         estados_flujo = []
         for idx, paso in enumerate(FLUJO_PASOS):
@@ -437,6 +435,12 @@ class ETADetail(CualquierRol, DetailView):
                 }
             )
         ctx["estados_flujo"] = estados_flujo
+        # Para el stepper visual y el bloque camión/conductor en movimiento manual
+        ctx["flujo_pasos"] = FLUJO_PASOS
+        ctx["camiones"] = Camion.objects.all().order_by("patente")
+        ctx["conductores"] = Conductor.objects.filter(
+            estado=Conductor.Estado.ACTIVO
+        ).select_related("empresa").order_by("nombre")
         return ctx
 
 
@@ -496,6 +500,30 @@ def eta_movimiento_manual(request, pk):
         if form.is_valid():
             mov = form.save(commit=False)
             mov.eta = eta
+            # Si es un movimiento de Retiro (Ida a puerto), actualizar
+            # camión y conductor en la ETA si se indicaron.
+            if mov.tipo == Movimiento.Tipo.RETIRO:
+                camion_id = request.POST.get("camion_mov")
+                conductor_id = request.POST.get("conductor_mov")
+                update_fields = []
+                if camion_id:
+                    try:
+                        eta.camion = Camion.objects.get(pk=camion_id)
+                        update_fields.append("camion")
+                    except Camion.DoesNotExist:
+                        pass
+                if conductor_id:
+                    try:
+                        eta.conductor = Conductor.objects.get(pk=conductor_id)
+                        update_fields.append("conductor")
+                    except Conductor.DoesNotExist:
+                        pass
+                if update_fields:
+                    update_fields.append("actualizado")
+                    eta.save(update_fields=update_fields)
+                    # Si empresa_responsable no viene en el form, inferirla del conductor
+                    if not mov.empresa_responsable_id and eta.conductor and eta.conductor.empresa:
+                        mov.empresa_responsable = eta.conductor.empresa
             mov.save()
             messages.success(request, "Movimiento registrado.")
         else:

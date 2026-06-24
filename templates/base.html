@@ -1,4 +1,5 @@
 {% load op_extras %}
+{% load static %}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,19 +9,43 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
+        :root {
+            --color-rojo: #CC0000;
+            --color-rojo-oscuro: #990000;
+            --color-gris: #6c757d;
+        }
         body { background:#f4f6f9; }
-        .navbar-brand { font-weight:700; }
-        .sidebar .nav-link { color:#cdd5df; }
-        .sidebar .nav-link.active, .sidebar .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); border-radius:.4rem; }
+        /* ── Navbar ── */
+        .navbar-top { background:#111; border-bottom:2px solid var(--color-rojo); }
+        .navbar-top .navbar-brand img { height:38px; }
+        .navbar-top .text-light, .navbar-top .btn-outline-light,
+        .navbar-top span, .navbar-top a { color:#fff !important; }
+        .navbar-top .btn-outline-light { border-color:rgba(255,255,255,.4); }
+        .navbar-top .btn-outline-light:hover { background:var(--color-rojo); border-color:var(--color-rojo); }
+        /* ── Sidebar ── */
+        .sidebar { background:#111 !important; }
+        .sidebar .nav-link { color:#fff; }
+        .sidebar .nav-link.active,
+        .sidebar .nav-link:hover { color:#fff; background:var(--color-rojo); border-radius:.4rem; }
+        .sidebar .text-secondary { color:#aaa !important; }
+        .sidebar-logo { padding:.75rem 1rem .5rem; border-bottom:1px solid rgba(255,255,255,.1); margin-bottom:.5rem; }
+        .sidebar-logo img { max-width:85%; height:auto; }
+        /* ── Buttons & badges ── */
+        .btn-primary { background:var(--color-rojo); border-color:var(--color-rojo-oscuro); }
+        .btn-primary:hover { background:var(--color-rojo-oscuro); border-color:var(--color-rojo-oscuro); }
+        .btn-outline-primary { color:var(--color-rojo); border-color:var(--color-rojo); }
+        .btn-outline-primary:hover { background:var(--color-rojo); border-color:var(--color-rojo); color:#fff; }
         .badge-estado { font-size:.75rem; }
     </style>
 </head>
 <body>
-<nav class="navbar navbar-dark bg-dark px-3">
-    <a class="navbar-brand" href="{% url 'operaciones:dashboard' %}">🛳️ Estibapp</a>
-    <div class="d-flex align-items-center text-light">
+<nav class="navbar navbar-dark navbar-top px-3">
+    <a class="navbar-brand" href="{% url 'operaciones:dashboard' %}">
+        <img src="{% static 'img/logo.png' %}" alt="Logo Transportes Doña Blanca">
+    </a>
+    <div class="d-flex align-items-center">
         {% if user.is_authenticated %}
-            <span class="me-3 small">{{ user.get_full_name|default:user.username }}</span>
+            <span class="me-3 small text-light">{{ user.get_full_name|default:user.username }}</span>
             <form method="post" action="{% url 'logout' %}" class="d-inline">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm btn-outline-light">Salir</button>
@@ -34,7 +59,10 @@
 <div class="container-fluid">
     <div class="row">
         {% if user.is_authenticated %}
-        <aside class="col-md-2 sidebar bg-dark text-light py-3 min-vh-100">
+        <aside class="col-md-2 sidebar text-light py-3 min-vh-100">
+            <div class="sidebar-logo text-center">
+                <img src="{% static 'img/logo.png' %}" alt="Logo">
+            </div>
             <ul class="nav flex-column">
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:dashboard' %}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:tablero' %}"><i class="bi bi-grid-1x2"></i> Tablero del día</a></li>
@@ -79,5 +107,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_js %}{% endblock %}
 </body>
 </html>
