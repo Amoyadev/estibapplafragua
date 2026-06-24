@@ -978,6 +978,67 @@ class Recuentos(CualquierRol, ListView):
         return ctx
 
 
+# ============================================================
+# Vista CEO: cronograma retiro-despacho por conductor / patente
+# ============================================================
+class RetiroDespacho(CualquierRol, TemplateView):
+    """
+    Panel ejecutivo: muestra todas las ETAs con conductor asignado,
+    agrupadas por conductor/camión, con filtro por nombre o patente.
+    Permite al CEO ver el cronograma de retiros y despachos.
+    """
+
+    template_name = "operaciones/retiro_despacho.html"
+
+    def get_context_data(self, **kwargs):
+        from datetime import timedelta
+        ctx = super().get_context_data(**kwargs)
+        q = self.request.GET.get("q", "").strip()
+        hoy = timezone.now().date()
+
+        etas_qs = (
+            ETA.objects.select_related(
+                "conductor", "conductor__empresa", "camion", "cliente", "contenedor"
+            )
+            .filter(conductor__isnull=False)
+            .exclude(estado__in=[ETA.EstadoCiclo.DESPACHADO_PUERTO])
+            .order_by("fecha_retiro", "fecha", "conductor__nombre")
+        )
+
+        if q:
+            etas_qs = etas_qs.filter(
+                Q(conductor__nombre__icontains=q) | Q(camion__patente__icontains=q)
+            )
+
+        # KPIs rápidos
+        ctx["total_activas"] = etas_qs.count()
+        ctx["hoy_count"] = etas_qs.filter(fecha_retiro=hoy).count()
+        ctx["sin_fecha"] = etas_qs.filter(fecha_retiro__isnull=True).count()
+        ctx["proximas"] = etas_qs.filter(
+            fecha_retiro__gt=hoy, fecha_retiro__lte=hoy + timedelta(days=7)
+        ).count()
+
+        # Conductores únicos con resumen
+        conductores_ids = (
+            etas_qs.values_list("conductor_id", flat=True).distinct()
+        )
+        from .models import Conductor
+        conductores = Conductor.objects.filter(pk__in=conductores_ids).select_related(
+            "empresa"
+        ).order_by("nombre")
+
+        grupos = []
+        for c in conductores:
+            filas = [e for e in etas_qs if e.conductor_id == c.pk]
+            if filas:
+                grupos.append({"conductor": c, "etas": filas})
+
+        ctx["grupos"] = grupos
+        ctx["q"] = q
+        ctx["hoy"] = hoy
+        return ctx
+
+
 class ReportesContextMixin:
     """
     Provee el listado de clientes para la sub-barra lateral de la sección

@@ -58,6 +58,7 @@ urlpatterns = [
 
     # --- Trazabilidad y reportes (Sprint 4) ---
     path("recuentos/", views.Recuentos.as_view(), name="recuentos"),
+    path("recuentos/retiro-despacho/", views.RetiroDespacho.as_view(), name="retiro_despacho"),
     path("reportes/", views.Reportes.as_view(), name="reportes"),
     path("reportes/cliente/<int:pk>/", views.ReporteCliente.as_view(), name="reporte_cliente"),
     path("reportes/<str:tipo>.csv", views.exportar_csv, name="exportar_csv"),
