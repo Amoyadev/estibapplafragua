@@ -1,36 +1,86 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Estibapp{% endblock %}
 {% block content %}
-<h3 class="mb-4">Panel de control</h3>
 
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <h3 class="mb-0">Panel de control</h3>
+    <form method="get" class="d-flex align-items-center gap-2">
+        <label class="small text-muted mb-0">Período:</label>
+        <select name="periodo" class="form-select form-select-sm" style="width:auto;border-color:#CC0000;"
+                onchange="this.form.submit()">
+            {% for val, lbl in periodos %}
+            <option value="{{ val }}" {% if periodo == val %}selected{% endif %}>{{ lbl }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+<!-- KPI Cards -->
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card text-bg-primary"><div class="card-body">
-            <div class="small">Total ETAs</div><div class="fs-2 fw-bold">{{ total_etas }}</div>
-        </div></div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="border-top:3px solid #CC0000;">
+            <div class="card-body text-center">
+                <div class="small text-muted">Total ETAs</div>
+                <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ total_etas }}</div>
+            </div>
+        </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-bg-warning"><div class="card-body">
-            <div class="small">Abiertas (en ciclo)</div><div class="fs-2 fw-bold">{{ abiertas }}</div>
-        </div></div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="border-top:3px solid #f59e0b;">
+            <div class="card-body text-center">
+                <div class="small text-muted">En ciclo</div>
+                <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ abiertas }}</div>
+            </div>
+        </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-bg-success"><div class="card-body">
-            <div class="small">En depósito</div><div class="fs-2 fw-bold">{{ en_deposito }}</div>
-        </div></div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="border-top:3px solid #16a34a;">
+            <div class="card-body text-center">
+                <div class="small text-muted">En depósito</div>
+                <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ en_deposito }}</div>
+            </div>
+        </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-bg-dark"><div class="card-body">
-            <div class="small">Acción rápida</div>
-            {% if es_admin or es_coordinador %}
-            <a href="{% url 'operaciones:eta_crear' %}" class="btn btn-light btn-sm mt-2">+ Nueva ETA</a>
-            {% else %}
-            <a href="{% url 'operaciones:patio' %}" class="btn btn-light btn-sm mt-2">Ir a patio</a>
-            {% endif %}
-        </div></div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="border-top:3px solid #2c2c3a;background:#2c2c3a;">
+            <div class="card-body d-flex flex-column justify-content-center align-items-center text-white">
+                <div class="small text-secondary mb-1">Acción rápida</div>
+                {% if es_admin or es_coordinador %}
+                <a href="{% url 'operaciones:eta_crear' %}" class="btn btn-sm mt-1"
+                   style="background:#CC0000;border-color:#990000;color:#fff;">+ Nueva ETA</a>
+                {% else %}
+                <a href="{% url 'operaciones:patio' %}" class="btn btn-sm mt-1"
+                   style="background:#CC0000;border-color:#990000;color:#fff;">Ir a patio</a>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 
+<!-- Charts -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                Actividad
+                <span class="badge ms-2" style="background:#2c2c3a;font-weight:400;">{{ etas_periodo_count }} ETA{{ etas_periodo_count|pluralize:"s" }} en el período</span>
+            </div>
+            <div class="card-body">
+                <canvas id="cActividad" height="90"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">Distribución por estado</div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <canvas id="cEstados" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ETAs recientes -->
 <div class="card">
     <div class="card-header d-flex justify-content-between">
         <span>ETAs recientes</span>
@@ -42,7 +92,7 @@
             <tbody>
             {% for eta in etas_recientes %}
                 <tr>
-                    <td>{{ eta.numero }}</td>
+                    <td class="font-monospace">{{ eta.numero }}</td>
                     <td>{{ eta.cliente.nombre }}</td>
                     <td>{{ eta.contenedor.codigo }}</td>
                     <td><span class="badge bg-secondary badge-estado">{{ eta.get_estado_display }}</span></td>
@@ -55,4 +105,66 @@
         </table>
     </div>
 </div>
+
+{{ graf_actividad|json_script:"graf-actividad" }}
+{{ graf_estados|json_script:"graf-estados" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const ACT = JSON.parse(document.getElementById("graf-actividad").textContent);
+    const EST = JSON.parse(document.getElementById("graf-estados").textContent);
+    const PALETTE = ["#CC0000","#2c2c3a","#f59e0b","#16a34a","#6c757d","#0d6efd","#0dcaf0","#6610f2"];
+
+    const ctxA = document.getElementById("cActividad");
+    if (ctxA && ACT.labels && ACT.labels.length) {
+        new Chart(ctxA, {
+            type: "bar",
+            data: {
+                labels: ACT.labels,
+                datasets: [{
+                    label: "ETAs",
+                    data: ACT.data,
+                    backgroundColor: "rgba(204,0,0,.7)",
+                    borderColor: "#990000",
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 }, grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                }
+            }
+        });
+    } else if (ctxA) {
+        ctxA.parentElement.innerHTML = '<p class="text-muted text-center py-5 small">Sin actividad en el período seleccionado.</p>';
+    }
+
+    const ctxE = document.getElementById("cEstados");
+    if (ctxE && EST.labels && EST.labels.length) {
+        new Chart(ctxE, {
+            type: "doughnut",
+            data: {
+                labels: EST.labels,
+                datasets: [{
+                    data: EST.data,
+                    backgroundColor: PALETTE.slice(0, EST.labels.length),
+                }]
+            },
+            options: {
+                cutout: "58%",
+                plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } }
+            }
+        });
+    } else if (ctxE) {
+        ctxE.parentElement.innerHTML = '<p class="text-muted text-center py-5 small">Sin datos.</p>';
+    }
+})();
+</script>
 {% endblock %}

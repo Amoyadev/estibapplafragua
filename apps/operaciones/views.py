@@ -70,6 +70,7 @@ class DashboardView(CualquierRol, ListView):
         return ETA.objects.select_related("cliente", "contenedor")[:8]
 
     def get_context_data(self, **kwargs):
+        from datetime import timedelta
         ctx = super().get_context_data(**kwargs)
         user = self.request.user
         ctx["es_admin"] = en_grupos(user, [ROL_ADMIN])
@@ -82,6 +83,49 @@ class DashboardView(CualquierRol, ListView):
         ctx["en_deposito"] = ETA.objects.filter(
             estado__in=ESTADOS_EN_DEPOSITO
         ).count()
+
+        # ── Period filter ─────────────────────────────────────
+        hoy = timezone.now().date()
+        periodo = self.request.GET.get("periodo", "mes")
+        deltas = {"semana": 7, "mes": 30, "trimestre": 90, "anual": 365}
+        dias = deltas.get(periodo, 30)
+        desde = hoy - timedelta(days=dias)
+
+        etas_periodo = ETA.objects.filter(fecha__gte=desde)
+
+        actividad = (
+            ETA.objects.filter(fecha__gte=desde)
+            .annotate(dia=TruncDate("fecha"))
+            .values("dia")
+            .annotate(total=Count("pk"))
+            .order_by("dia")
+        )
+        por_estado = (
+            etas_periodo
+            .values("estado")
+            .annotate(total=Count("pk"))
+            .order_by("-total")
+        )
+        labels_estado = [
+            dict(ETA.EstadoCiclo.choices).get(r["estado"], r["estado"])
+            for r in por_estado
+        ]
+        ctx["periodo"] = periodo
+        ctx["periodos"] = [
+            ("semana", "Esta semana"),
+            ("mes", "Este mes"),
+            ("trimestre", "Trimestre"),
+            ("anual", "Año"),
+        ]
+        ctx["graf_actividad"] = {
+            "labels": [str(r["dia"]) for r in actividad],
+            "data": [r["total"] for r in actividad],
+        }
+        ctx["graf_estados"] = {
+            "labels": labels_estado,
+            "data": [r["total"] for r in por_estado],
+        }
+        ctx["etas_periodo_count"] = etas_periodo.count()
         return ctx
 
 
@@ -456,6 +500,16 @@ class ETADetail(CualquierRol, DetailView):
             ctx["siguiente_es_retiro"] = False
         # Último movimiento para mostrarlo en el card
         ctx["ultimo_movimiento"] = self.object.movimientos.first()
+        # Todos los pasos futuros (para el selector de estado en el form)
+        ctx["pasos_futuros"] = [
+            {
+                "idx": p["idx"],
+                "label": p["label"],
+                "es_retiro": FLUJO_PASOS[p["idx"]].get("mov") == Movimiento.Tipo.RETIRO,
+            }
+            for p in estados_flujo
+            if p["futuro"]
+        ]
         return ctx
 
 
@@ -765,10 +819,14 @@ class TableroOperativo(CualquierRol, TemplateView):
         fechas.update(
             ETA.objects.exclude(fecha_entrega=None).values_list("fecha_entrega", flat=True)
         )
-        return sorted(fechas, reverse=True)
+        # Fallback: ETAs sin fecha_retiro explícita usan su campo fecha
+        fechas.update(
+            ETA.objects.filter(fecha_retiro=None).values_list("fecha", flat=True)
+        )
+        return sorted((f for f in fechas if f is not None), reverse=True)[:60]
 
     def _fecha_por_defecto(self, disponibles):
-        """Fecha con mayor cantidad de operaciones (retiros + entregas)."""
+        """Fecha con mayor cantidad de operaciones (retiros + entregas + fecha principal)."""
         if not disponibles:
             return None
         conteo = defaultdict(int)
@@ -776,7 +834,9 @@ class TableroOperativo(CualquierRol, TemplateView):
             conteo[d] += 1
         for d in ETA.objects.exclude(fecha_entrega=None).values_list("fecha_entrega", flat=True):
             conteo[d] += 1
-        return max(conteo, key=conteo.get)
+        for d in ETA.objects.filter(fecha_retiro=None).values_list("fecha", flat=True):
+            conteo[d] += 1
+        return max(conteo, key=conteo.get) if conteo else None
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -795,8 +855,9 @@ class TableroOperativo(CualquierRol, TemplateView):
         val = self.request.GET.get("val", "")  # "", "RETIRO" o "ENTREGA"
 
         retiros = (
-            ETA.objects.filter(fecha_retiro=fecha)
-            .select_related("cliente", "contenedor", "conductor")
+            ETA.objects.filter(
+                Q(fecha_retiro=fecha) | Q(fecha_retiro=None, fecha=fecha)
+            ).select_related("cliente", "contenedor", "conductor")
             if fecha else ETA.objects.none()
         )
         entregas = (
@@ -1220,4 +1281,4 @@ def exportar_csv(request, tipo):
             e.fecha.isoformat(),
             e.get_estado_display(),
         ])
-    return response
+    r

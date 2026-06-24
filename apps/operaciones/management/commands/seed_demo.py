@@ -143,7 +143,7 @@ def fecha_demo():
     (actividad por mes, retiros vs despachos) muestren una serie real en
     lugar de un único punto en el día de hoy.
     """
-    return timezone.now().date() - timedelta(days=random.randint(0, 150))
+    return timezone.now().date() - timedelta(days=random.randint(0, 360))
 
 
 class Command(BaseCommand):
@@ -163,8 +163,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--etas",
             type=int,
-            default=12,
-            help="Cantidad de ETAs a generar (por defecto 12).",
+            default=40,
+            help="Cantidad de ETAs a generar (por defecto 40).",
         )
         parser.add_argument(
             "--admin-password",
@@ -368,6 +368,7 @@ class Command(BaseCommand):
                 if estado_destino in en_deposito
                 else ""
             )
+            fecha_eta = fecha_demo()
             eta = ETA.objects.create(
                 numero=numero,
                 cliente=random.choice(clientes),
@@ -377,7 +378,8 @@ class Command(BaseCommand):
                 camion=random.choice(camiones) if destino_idx >= 1 else None,
                 deposito=random.choice(DEPOSITOS),
                 ubicacion=ubicacion,
-                fecha=fecha_demo(),
+                fecha=fecha_eta,
+                fecha_retiro=fecha_eta if destino_idx >= 1 else None,
                 hora_retiro=time(random.randint(8, 18), random.choice([0, 30])),
                 tipo_proceso=random.choice(
                     [ETA.TipoProceso.DIRECTO, ETA.TipoProceso.INDIRECTO]
@@ -453,6 +455,7 @@ class Command(BaseCommand):
             numero = f"ETA-TAT-{base + self._correlativo_tat:04d}"
             if ETA.objects.filter(numero=numero).exists():
                 return
+            fecha_tat = fecha_demo()
             eta = ETA.objects.create(
                 numero=numero,
                 cliente=cliente,
@@ -465,7 +468,8 @@ class Command(BaseCommand):
                     f"{random.choice(UBICACIONES)} · Nivel {random.randint(1, 4)}"
                     if en_dep else ""
                 ),
-                fecha=fecha_demo(),
+                fecha=fecha_tat,
+                fecha_retiro=fecha_tat,
                 hora_retiro=time(random.randint(8, 18), random.choice([0, 30])),
                 tipo_proceso=ETA.TipoProceso.DIRECTO,
                 estado=estado_destino,
