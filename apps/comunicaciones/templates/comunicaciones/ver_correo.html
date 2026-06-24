@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Correo — {{ correo.asunto|truncatechars:40 }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-envelope me-2"></i>Detalle del correo</h4>
+    <a href="{% url 'comunicaciones:bandeja' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Volver a bandeja
+    </a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header fw-semibold" style="border-left:4px solid #CC0000;">
+        {{ correo.asunto }}
+    </div>
+    <ul class="list-group list-group-flush small">
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">De</span><strong>{{ correo.remitente }}</strong>
+        </li>
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Fecha</span>
+            <strong>{{ correo.fecha_correo|date:"d/m/Y H:i" }}</strong>
+        </li>
+        {% if correo.numero_eta %}
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">ETA detectado</span>
+            <span class="badge" style="background:#2c2c3a;">{{ correo.numero_eta }}</span>
+        </li>
+        {% endif %}
+        {% if correo.contenedor_codigo %}
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Contenedor</span>
+            <span class="badge bg-secondary">{{ correo.contenedor_codigo }}</span>
+        </li>
+        {% endif %}
+        {% if correo.cliente_nombre %}
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Cliente detectado</span>
+            <strong>{{ correo.cliente_nombre }}</strong>
+        </li>
+        {% endif %}
+        {% if correo.puerto %}
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Puerto detectado</span>
+            <strong>{{ correo.puerto }}</strong>
+        </li>
+        {% endif %}
+        <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Estado</span>
+            {% if correo.estado == "PENDIENTE" %}
+                <span class="badge" style="background:#CC0000;">Pendiente</span>
+            {% elif correo.estado == "PROCESADO" %}
+                <span class="badge bg-success">Procesado</span>
+            {% else %}
+                <span class="badge bg-secondary">Ignorado</span>
+            {% endif %}
+        </li>
+    </ul>
+</div>
+
+<div class="card">
+    <div class="card-header small fw-semibold">Cuerpo del mensaje</div>
+    <div class="card-body">
+        <pre class="small mb-0" style="white-space:pre-wrap; word-break:break-word; font-family:inherit; color:#333;">{{ correo.cuerpo }}</pre>
+    </div>
+</div>
+
+{% endblock %}

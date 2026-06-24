@@ -48,6 +48,7 @@ urlpatterns = [
     path("etas/<int:pk>/estado/", views.eta_cambiar_estado, name="eta_cambiar_estado"),
     path("etas/<int:pk>/ubicacion/", views.patio_ubicacion, name="eta_ubicacion"),
     path("etas/<int:pk>/movimiento/", views.eta_movimiento_manual, name="eta_movimiento"),
+    path("etas/<int:pk>/transporte/", views.eta_asignar_transporte, name="eta_transporte"),
 
     # --- Pantallas por perfil (Sprint 3) ---
     path("bandeja/", views.BandejaCoordinador.as_view(), name="bandeja"),

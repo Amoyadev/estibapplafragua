@@ -2,6 +2,8 @@
 {% load op_extras %}
 {% block title %}ETA {{ eta.numero }} — Estibapp{% endblock %}
 {% block content %}
+
+{# ── Cabecera ── #}
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
         <h3 class="mb-1">
@@ -21,209 +23,299 @@
 </div>
 
 {% if eta.estado == "SOLICITADO" %}
-<div class="alert alert-warning d-flex align-items-center" role="alert">
+<div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
     <i class="bi bi-bell-fill me-2"></i>
-    <div><strong>Solicitado por cliente.</strong> Pendiente de iniciar el proceso: asigna conductor/camión y avanza el estado.</div>
+    <div><strong>Solicitado por cliente.</strong> Completa los datos y registra el primer movimiento para avanzar el ciclo.</div>
 </div>
 {% endif %}
 
 <div class="row g-3">
+
+    {# ══════════════════ IZQUIERDA: Datos ══════════════════ #}
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">Datos de la solicitud</div>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item d-flex justify-content-between"><span>Cliente</span><strong>{{ eta.cliente.nombre }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Agente portuario</span><strong>{{ eta.agente.nombre }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Contenedor</span><strong>{{ eta.contenedor.codigo }} ({{ eta.contenedor.get_tipo_display }})</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Conductor</span><strong>{{ eta.conductor|default:"—" }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Camión</span><strong>{{ eta.camion.patente|default:"—" }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Depósito</span><strong>{{ eta.deposito|default:"—" }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Ubicación en patio</span><strong>{{ eta.ubicacion|default:"— sin registrar —" }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Fecha / hora retiro</span><strong>{{ eta.fecha }} {{ eta.hora_retiro|default:"" }}</strong></li>
-                <li class="list-group-item d-flex justify-content-between"><span>Tipo de proceso</span><strong>{{ eta.get_tipo_proceso_display }}</strong></li>
+        <div class="card mb-3">
+            <div class="card-header fw-semibold">Datos de la solicitud</div>
+            <ul class="list-group list-group-flush small">
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Cliente</span><strong>{{ eta.cliente.nombre }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Agente portuario</span><strong>{{ eta.agente.nombre }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Contenedor</span>
+                    <strong>{{ eta.contenedor.codigo }}
+                        <span class="badge bg-secondary ms-1">{{ eta.contenedor.get_tipo_display }}</span>
+                    </strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Estado contenedor</span>
+                    <strong>{{ eta.contenedor.get_estado_display }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Depósito</span><strong>{{ eta.deposito|default:"—" }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Fecha / hora retiro</span>
+                    <strong>{{ eta.fecha }} {{ eta.hora_retiro|default:"" }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Tipo de proceso</span><strong>{{ eta.get_tipo_proceso_display }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Ubicación en patio</span>
+                    <strong>{{ eta.ubicacion|default:"— sin registrar —" }}</strong>
+                </li>
             </ul>
-            <div class="card-body d-flex gap-2 flex-wrap">
+
+            {# ── Transporte inline (sin salir de la página) ── #}
+            <div class="card-body border-top pb-2">
+                <p class="small fw-semibold mb-2"><i class="bi bi-truck me-1"></i>Transporte asignado</p>
+                <div class="d-flex gap-2 mb-2 small">
+                    <span class="text-muted">Camión:</span>
+                    <strong>{{ eta.camion.patente|default:"— sin asignar —" }}</strong>
+                    <span class="text-muted ms-3">Conductor:</span>
+                    <strong>{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong>
+                </div>
                 {% if user|en_grupo:"Administrador,Coordinador" %}
+                <form method="post" action="{% url 'operaciones:eta_transporte' eta.pk %}" class="row g-2">
+                    {% csrf_token %}
+                    <div class="col-6">
+                        <select name="camion_id" class="form-select form-select-sm">
+                            <option value="">— sin camión —</option>
+                            {% for c in camiones %}
+                                <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>
+                                    {{ c.patente }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <select name="conductor_id" class="form-select form-select-sm">
+                            <option value="">— sin conductor —</option>
+                            {% for c in conductores %}
+                                <option value="{{ c.pk }}" {% if eta.conductor_id == c.pk %}selected{% endif %}>
+                                    {{ c.nombre }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-sm btn-outline-secondary w-100">
+                            <i class="bi bi-arrow-repeat me-1"></i>Actualizar transporte
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+
+            {# ── Acciones generales ── #}
+            {% if user|en_grupo:"Administrador,Coordinador" %}
+            <div class="card-footer d-flex gap-2 flex-wrap bg-white">
                 <a href="{% url 'operaciones:eta_editar' eta.pk %}" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-pencil-square"></i> Editar datos
                 </a>
                 <a href="https://wa.me/" target="_blank"
-                   class="btn btn-sm"
-                   style="background:#25D366; color:#fff; border-color:#1fba57;"
-                   title="Función disponible próximamente">
-                    <i class="bi bi-whatsapp"></i> Contactar por WhatsApp
+                   class="btn btn-sm" style="background:#25D366; color:#fff; border-color:#1fba57;">
+                    <i class="bi bi-whatsapp"></i> WhatsApp
                 </a>
-                {% endif %}
             </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <div class="card mb-3">
-            <div class="card-header">Estado del ciclo</div>
-            <div class="card-body">
-                <div class="dropdown">
-                    <button class="btn {{ eta.estado|estado_btn }} dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-flag-fill"></i> {{ eta.get_estado_display }}
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><h6 class="dropdown-header">Mover estado a…</h6></li>
-                        {% for e in estados_flujo %}
-                            {% if e.actual %}
-                                <li><span class="dropdown-item active"><span class="badge {{ e.valor|estado_badge }} me-2">&nbsp;</span>{{ e.label }} (actual)</span></li>
-                            {% elif e.pasado %}
-                                <li><span class="dropdown-item text-muted disabled"><span class="badge {{ e.valor|estado_badge }} me-2 opacity-50">&nbsp;</span>{{ e.label }}</span></li>
-                            {% else %}
-                                <li>
-                                    <form method="post" action="{% url 'operaciones:eta_cambiar_estado' eta.pk %}" class="d-inline">
-                                        {% csrf_token %}
-                                        <input type="hidden" name="paso" value="{{ e.idx }}">
-                                        <button type="submit" class="dropdown-item"><span class="badge {{ e.valor|estado_badge }} me-2">&nbsp;</span>{{ e.label }}</button>
-                                    </form>
-                                </li>
-                            {% endif %}
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% if not estado_siguiente %}
-                    <div class="alert alert-dark mt-3 mb-0 py-2">Cierre final: contenedor devuelto a puerto. Ciclo terminado.</div>
-                {% endif %}
-            </div>
+            {% endif %}
         </div>
 
+        {# ── Ubicación en patio ── #}
         {% if user|en_grupo:"Administrador,Encargado de Patio" %}
-        <div class="card mb-3">
-            <div class="card-header">Ubicación en patio (jefe de patio)</div>
-            <div class="card-body">
+        <div class="card">
+            <div class="card-header small fw-semibold">
+                <i class="bi bi-geo-alt me-1"></i>Ubicación en patio
+            </div>
+            <div class="card-body py-2">
                 <form method="post" action="{% url 'operaciones:eta_ubicacion' eta.pk %}" class="d-flex gap-2">
                     {% csrf_token %}
                     {{ ubicacion_form.ubicacion }}
                     <button class="btn btn-outline-primary btn-sm">Guardar</button>
                 </form>
-                <div class="form-text">Registrar cuando el gruero indique por radio la posición del contenedor.</div>
+                <div class="form-text">Registrar cuando el gruero indique la posición por radio.</div>
             </div>
         </div>
         {% endif %}
+    </div>
 
+    {# ══════════════════ DERECHA: Ciclo + Movimiento (un solo card) ══════════════════ #}
+    <div class="col-md-6">
         <div class="card">
-            <div class="card-header fw-semibold">
-                <i class="bi bi-clipboard-check me-1"></i> Registrar movimiento manual operativo
+            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-arrow-repeat me-1"></i>Ciclo del contenedor</span>
+                <span class="badge" style="background:#CC0000;">{{ eta.get_estado_display }}</span>
             </div>
             <div class="card-body">
-                {# Flujo de estados del ciclo (informativo) #}
+
+                {# ── Stepper visual ── #}
                 <div class="mb-3">
-                    <p class="small text-muted mb-1">Flujo del contenedor:</p>
                     <div class="d-flex flex-wrap gap-1 align-items-center">
-                        {% for paso in flujo_pasos %}
-                            <span class="badge {% if paso.estado == eta.estado %}text-white{% else %}text-muted border{% endif %} small"
-                                  style="{% if paso.estado == eta.estado %}background:#CC0000;{% else %}background:#f0f0f0; color:#555;{% endif %}">
-                                {{ paso.label }}
+                        {% for e in estados_flujo %}
+                            <span class="badge small px-2 py-1"
+                                  style="{% if e.actual %}background:#CC0000; color:#fff;{% elif e.pasado %}background:#555; color:#fff;{% else %}background:#e9ecef; color:#777;{% endif %}">
+                                {% if e.pasado %}<i class="bi bi-check2 me-1"></i>{% endif %}
+                                {{ e.label }}
                             </span>
-                            {% if not forloop.last %}<i class="bi bi-arrow-right small text-muted"></i>{% endif %}
+                            {% if not forloop.last %}
+                                <i class="bi bi-chevron-right small" style="color:#bbb;"></i>
+                            {% endif %}
                         {% endfor %}
                     </div>
                 </div>
 
-                <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}" id="form-movimiento">
-                    {% csrf_token %}
-
-                    {# Tipo #}
-                    <div class="mb-2">
-                        <label class="form-label small fw-semibold">Tipo (estado del contenedor en el ciclo)</label>
-                        {{ mov_form.tipo }}
+                {# ── Último movimiento ── #}
+                {% if ultimo_movimiento %}
+                <div class="mb-3 p-2 rounded small" style="background:#f8f9fa; border-left:3px solid #CC0000;">
+                    <div class="fw-semibold mb-1 text-muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.05em;">
+                        Último movimiento
                     </div>
-
-                    {# Fecha agendada por coordinador #}
-                    <div class="mb-2">
-                        <label class="form-label small fw-semibold">Fecha agendada</label>
-                        {{ mov_form.fecha }}
+                    <div class="d-flex gap-3 flex-wrap">
+                        <span><i class="bi bi-tag me-1"></i><strong>{{ ultimo_movimiento.get_tipo_display }}</strong></span>
+                        <span><i class="bi bi-calendar3 me-1"></i>{{ ultimo_movimiento.fecha|date:"d/m/Y H:i" }}</span>
+                        {% if ultimo_movimiento.empresa_responsable %}
+                        <span><i class="bi bi-building me-1"></i>{{ ultimo_movimiento.empresa_responsable }}</span>
+                        {% endif %}
                     </div>
+                    {% if ultimo_movimiento.observacion %}
+                    <div class="mt-1 text-muted">{{ ultimo_movimiento.observacion }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
 
-                    {# Empresa responsable — solo dato, sin cambio #}
-                    <div class="mb-2">
-                        <label class="form-label small fw-semibold">Empresa responsable</label>
-                        <input type="hidden" name="{{ mov_form.empresa_responsable.html_name }}"
-                               value="{{ mov_form.empresa_responsable.value|default:'' }}">
-                        <div class="form-control-plaintext small border rounded px-2 py-1 bg-light">
-                            {{ eta.conductor.empresa|default:"— sin empresa asignada —" }}
+                {# ── Formulario de avance (o mensaje de cierre) ── #}
+                {% if siguiente_paso_idx is not None %}
+                <div class="border rounded p-3" style="background:#fafafa;">
+                    <p class="small fw-semibold mb-3" style="color:#CC0000;">
+                        <i class="bi bi-arrow-right-circle-fill me-1"></i>
+                        Registrar movimiento → avanzar a
+                        <strong>{{ siguiente_paso_label }}</strong>
+                    </p>
+
+                    <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}" id="form-avance">
+                        {% csrf_token %}
+                        <input type="hidden" name="siguiente_paso_idx" value="{{ siguiente_paso_idx }}">
+
+                        {# Estado del contenedor — OBLIGATORIO #}
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">
+                                Estado del contenedor <span class="text-danger">*</span>
+                            </label>
+                            <select name="tipo_contenedor" class="form-select form-select-sm" required>
+                                <option value="">— seleccionar —</option>
+                                <option value="VACIO"   {% if eta.contenedor.estado == "VACIO"   %}selected{% endif %}>Vacío</option>
+                                <option value="CARGADO" {% if eta.contenedor.estado == "CARGADO" %}selected{% endif %}>Con carga</option>
+                            </select>
                         </div>
-                    </div>
 
-                    {# Camión / Conductor — visible solo para Retiro (Ida a puerto) #}
-                    <div id="bloque-transporte" class="mb-2" style="display:none;">
-                        <div class="alert alert-light border-start border-danger border-3 py-2 small mb-2">
-                            <i class="bi bi-truck me-1"></i><strong>Ida a puerto</strong> — asigna camión y conductor para este movimiento.
-                        </div>
-                        <div class="row g-2">
-                            <div class="col-6">
-                                <label class="form-label small fw-semibold">Camión</label>
-                                <select name="camion_mov" class="form-select form-select-sm">
-                                    <option value="">— seleccionar —</option>
-                                    {% for c in camiones %}
-                                        <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
-                                    {% endfor %}
-                                </select>
+                        {# Empresa responsable (solo lectura) #}
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">Empresa responsable</label>
+                            <div class="form-control form-control-sm bg-light text-muted" style="pointer-events:none; user-select:none;">
+                                {{ eta.conductor.empresa|default:"— sin empresa asignada —" }}
                             </div>
-                            <div class="col-6">
-                                <label class="form-label small fw-semibold">Conductor</label>
-                                <select name="conductor_mov" class="form-select form-select-sm">
-                                    <option value="">— seleccionar —</option>
-                                    {% for c in conductores %}
-                                        <option value="{{ c.pk }}" {% if eta.conductor_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
-                                    {% endfor %}
-                                </select>
+                        </div>
+
+                        {# Camión + Conductor — solo para RETIRO (Ida a puerto) #}
+                        {% if siguiente_es_retiro %}
+                        <div class="mb-2 p-2 rounded" style="background:#fff8e1; border:1px solid #ffc107;">
+                            <p class="small fw-semibold mb-2">
+                                <i class="bi bi-truck me-1"></i>Ida a puerto — asigna transporte
+                                <span class="text-danger">*</span>
+                            </p>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Camión</label>
+                                    <select name="camion_mov" class="form-select form-select-sm" required>
+                                        <option value="">— seleccionar —</option>
+                                        {% for c in camiones %}
+                                            <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Conductor</label>
+                                    <select name="conductor_mov" class="form-select form-select-sm" required>
+                                        <option value="">— seleccionar —</option>
+                                        {% for c in conductores %}
+                                            <option value="{{ c.pk }}" {% if eta.conductor_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                        {% endif %}
 
-                    {# Observación #}
-                    <div class="mb-3">
-                        <label class="form-label small fw-semibold">Observación <span class="text-muted">(mensaje al conductor / equipo)</span></label>
-                        {{ mov_form.observacion }}
-                    </div>
+                        {# Fecha — OBLIGATORIA #}
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">
+                                Fecha agendada <span class="text-danger">*</span>
+                            </label>
+                            <input type="datetime-local" name="fecha" class="form-control form-control-sm" required>
+                        </div>
 
-                    <button class="btn btn-sm text-white" style="background:#CC0000; border-color:#990000;">
-                        <i class="bi bi-check2-circle"></i> Registrar movimiento
-                    </button>
-                </form>
+                        {# Observación — OBLIGATORIA #}
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">
+                                Observación <span class="text-danger">*</span>
+                                <span class="fw-normal text-muted">(mensaje al equipo / conductor)</span>
+                            </label>
+                            <textarea name="observacion" class="form-control form-control-sm" rows="2"
+                                      placeholder="Ej: Retiro programado 09:00 hrs, coordinar con portería…" required></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-sm w-100 fw-semibold text-white"
+                                style="background:#CC0000; border-color:#990000;">
+                            <i class="bi bi-check2-circle me-1"></i>Registrar movimiento y avanzar estado
+                        </button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="alert alert-dark mb-0 py-2 text-center">
+                    <i class="bi bi-flag-fill me-1"></i>
+                    Ciclo cerrado — contenedor devuelto a puerto.
+                </div>
+                {% endif %}
+
             </div>
         </div>
     </div>
 </div>
 
+{# ══════════════════ Trazabilidad ══════════════════ #}
 <div class="card mt-3">
-    <div class="card-header">Trazabilidad / movimientos</div>
+    <div class="card-header fw-semibold">
+        <i class="bi bi-list-check me-1"></i>Trazabilidad / movimientos
+    </div>
     <div class="table-responsive">
         <table class="table table-sm mb-0">
-            <thead class="table-light"><tr><th>Tipo</th><th>Fecha</th><th>Empresa responsable</th><th>Observación</th></tr></thead>
+            <thead class="table-light">
+                <tr>
+                    <th>Movimiento</th>
+                    <th>Fecha</th>
+                    <th>Empresa responsable</th>
+                    <th>Observación</th>
+                </tr>
+            </thead>
             <tbody>
             {% for m in movimientos %}
-                <tr>
+                <tr {% if forloop.first %}style="background:#fff5f5;"{% endif %}>
                     <td><span class="badge bg-secondary">{{ m.get_tipo_display }}</span></td>
-                    <td>{{ m.fecha }}</td>
-                    <td>{{ m.empresa_responsable|default:"—" }}</td>
-                    <td>{{ m.observacion }}</td>
+                    <td class="small">{{ m.fecha|date:"d/m/Y H:i" }}</td>
+                    <td class="small">{{ m.empresa_responsable|default:"—" }}</td>
+                    <td class="small">{{ m.observacion }}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="4" class="text-muted text-center py-3">Sin movimientos registrados.</td></tr>
+                <tr>
+                    <td colspan="4" class="text-muted text-center py-3">
+                        <i class="bi bi-inbox me-1"></i>Sin movimientos registrados.
+                    </td>
+                </tr>
             {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-(function(){
-    var sel = document.querySelector('#form-movimiento select[name="tipo"]');
-    var bloque = document.getElementById('bloque-transporte');
-    if (!sel || !bloque) return;
-    function toggle(){
-        bloque.style.display = sel.value === 'RETIRO' ? '' : 'none';
-    }
-    sel.addEventListener('change', toggle);
-    toggle();
-})();
-</script>
 {% endblock %}

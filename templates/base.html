@@ -16,14 +16,14 @@
         }
         body { background:#f4f6f9; }
         /* ── Navbar ── */
-        .navbar-top { background:#111; border-bottom:2px solid var(--color-rojo); }
-        .navbar-top .navbar-brand img { height:38px; }
+        .navbar-top { background:#2c2c3a; border-bottom:2px solid var(--color-rojo); }
+        .navbar-top .navbar-brand { font-weight:700; color:#fff; font-size:1.1rem; letter-spacing:.03em; }
         .navbar-top .text-light, .navbar-top .btn-outline-light,
         .navbar-top span, .navbar-top a { color:#fff !important; }
-        .navbar-top .btn-outline-light { border-color:rgba(255,255,255,.4); }
+        .navbar-top .btn-outline-light { border-color:rgba(255,255,255,.35); }
         .navbar-top .btn-outline-light:hover { background:var(--color-rojo); border-color:var(--color-rojo); }
         /* ── Sidebar ── */
-        .sidebar { background:#111 !important; }
+        .sidebar { background:#2c2c3a !important; }
         .sidebar .nav-link { color:#fff; }
         .sidebar .nav-link.active,
         .sidebar .nav-link:hover { color:#fff; background:var(--color-rojo); border-radius:.4rem; }
@@ -41,7 +41,7 @@
 <body>
 <nav class="navbar navbar-dark navbar-top px-3">
     <a class="navbar-brand" href="{% url 'operaciones:dashboard' %}">
-        <img src="{% static 'img/logo.png' %}" alt="Logo Transportes Doña Blanca">
+        <span style="color:var(--color-rojo);">■</span> Estibapp
     </a>
     <div class="d-flex align-items-center">
         {% if user.is_authenticated %}
@@ -69,12 +69,15 @@
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:contenedor_buscar' %}"><i class="bi bi-search"></i> Buscar contenedor</a></li>
                 {% if user|en_grupo:"Administrador,Coordinador" %}
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:bandeja' %}"><i class="bi bi-inbox"></i> Bandeja</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'comunicaciones:bandeja' %}"><i class="bi bi-envelope-open"></i> Correos IMAP</a></li>
                 {% endif %}
                 {% if user|en_grupo:"Administrador,Encargado de Patio" %}
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:patio' %}"><i class="bi bi-truck"></i> Patio</a></li>
                 {% endif %}
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:recuentos' %}"><i class="bi bi-bar-chart"></i> Recuentos</a></li>
+                {% if user|en_grupo:"Administrador" %}
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:reportes' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Reportes</a></li>
+                {% endif %}
                 {% if user|en_grupo:"Administrador,Coordinador" %}
                 <li class="nav-item mt-2"><span class="text-secondary small ps-2">Mantenedor</span></li>
                 <li class="nav-item"><a class="nav-link" href="{% url 'operaciones:cliente_list' %}">Clientes</a></li>

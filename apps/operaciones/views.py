@@ -50,6 +50,7 @@ from .permissions import (
     AdminOCoordinador,
     AdminOPatio,
     CualquierRol,
+    SoloAdmin,
     ROL_ADMIN,
     ROL_COORDINADOR,
     ROL_PATIO,
@@ -441,6 +442,20 @@ class ETADetail(CualquierRol, DetailView):
         ctx["conductores"] = Conductor.objects.filter(
             estado=Conductor.Estado.ACTIVO
         ).select_related("empresa").order_by("nombre")
+        # Siguiente paso en el flujo para el formulario unificado
+        sig_idx = actual_idx + 1
+        if sig_idx < len(FLUJO_PASOS):
+            ctx["siguiente_paso_idx"] = sig_idx
+            ctx["siguiente_paso_label"] = FLUJO_PASOS[sig_idx]["label"]
+            ctx["siguiente_es_retiro"] = (
+                FLUJO_PASOS[sig_idx].get("mov") == Movimiento.Tipo.RETIRO
+            )
+        else:
+            ctx["siguiente_paso_idx"] = None
+            ctx["siguiente_paso_label"] = None
+            ctx["siguiente_es_retiro"] = False
+        # Último movimiento para mostrarlo en el card
+        ctx["ultimo_movimiento"] = self.object.movimientos.first()
         return ctx
 
 
@@ -491,43 +506,112 @@ def eta_avanzar(request, pk):
 
 
 def eta_movimiento_manual(request, pk):
-    """Registra un movimiento manual sobre una ETA."""
+    """Registra un movimiento y avanza la ETA al siguiente paso del ciclo.
+
+    Campos obligatorios: siguiente_paso_idx, tipo_contenedor, fecha, observacion.
+    Para RETIRO (Ida a puerto) también son obligatorios camion_mov y conductor_mov.
+    """
     if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR, ROL_PATIO]):
         return redirect("login")
     eta = get_object_or_404(ETA, pk=pk)
+    if request.method != "POST":
+        return redirect("operaciones:eta_detalle", pk=pk)
+
+    from django.utils.dateparse import parse_datetime
+
+    siguiente_idx_raw = request.POST.get("siguiente_paso_idx", "").strip()
+    tipo_contenedor   = request.POST.get("tipo_contenedor", "").strip()
+    fecha_str         = request.POST.get("fecha", "").strip()
+    observacion       = request.POST.get("observacion", "").strip()
+
+    errores = []
+    if not siguiente_idx_raw:
+        errores.append("Paso de destino no especificado.")
+    if not tipo_contenedor:
+        errores.append("Debes indicar el estado del contenedor (vacío / con carga).")
+    if not fecha_str:
+        errores.append("La fecha es obligatoria.")
+    if not observacion:
+        errores.append("La observación es obligatoria.")
+    for e in errores:
+        messages.error(request, e)
+    if errores:
+        return redirect("operaciones:eta_detalle", pk=pk)
+
+    try:
+        siguiente_idx = int(siguiente_idx_raw)
+    except ValueError:
+        messages.error(request, "Paso no válido.")
+        return redirect("operaciones:eta_detalle", pk=pk)
+
+    if not 0 <= siguiente_idx < len(FLUJO_PASOS):
+        messages.error(request, "Paso fuera del flujo.")
+        return redirect("operaciones:eta_detalle", pk=pk)
+
+    fecha = parse_datetime(fecha_str)
+    if not fecha:
+        messages.error(request, "Formato de fecha no válido.")
+        return redirect("operaciones:eta_detalle", pk=pk)
+
+    paso_destino = FLUJO_PASOS[siguiente_idx]
+    tipo_mov     = paso_destino.get("mov")
+
+    if tipo_mov == Movimiento.Tipo.RETIRO:
+        camion_id    = request.POST.get("camion_mov", "").strip()
+        conductor_id = request.POST.get("conductor_mov", "").strip()
+        if not camion_id or not conductor_id:
+            messages.error(request, "Para Ida a puerto debes asignar camión y conductor.")
+            return redirect("operaciones:eta_detalle", pk=pk)
+        try:
+            eta.camion    = Camion.objects.get(pk=camion_id)
+            eta.conductor = Conductor.objects.get(pk=conductor_id)
+            eta.save(update_fields=["camion", "conductor", "actualizado"])
+        except (Camion.DoesNotExist, Conductor.DoesNotExist):
+            messages.error(request, "Camión o conductor no encontrado.")
+            return redirect("operaciones:eta_detalle", pk=pk)
+
+    contenedor = eta.contenedor
+    if tipo_contenedor in dict(Contenedor.Estado.choices):
+        contenedor.estado = tipo_contenedor
+        contenedor.save(update_fields=["estado", "actualizado"])
+
+    while eta.paso_actual_idx() < siguiente_idx:
+        next_paso  = FLUJO_PASOS[eta.paso_actual_idx() + 1]
+        eta.estado = next_paso["estado"]
+        eta.save(update_fields=["estado", "actualizado"])
+
+    empresa = (
+        eta.conductor.empresa
+        if eta.conductor and eta.conductor.empresa
+        else None
+    )
+    if tipo_mov:
+        fecha_aware = timezone.make_aware(fecha) if timezone.is_naive(fecha) else fecha
+        Movimiento.objects.create(
+            eta=eta,
+            tipo=tipo_mov,
+            fecha=fecha_aware,
+            empresa_responsable=empresa,
+            observacion=observacion,
+        )
+
+    _notificar_cliente(eta, eta.estado)
+    messages.success(request, f"Movimiento registrado. ETA en «{eta.get_estado_display()}».")
+    return redirect("operaciones:eta_detalle", pk=pk)
+
+
+def eta_asignar_transporte(request, pk):
+    """Actualiza camión y conductor de una ETA sin salir de la vista detalle."""
+    if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
+        return redirect("login")
+    eta = get_object_or_404(ETA, pk=pk)
     if request.method == "POST":
-        form = MovimientoManualForm(request.POST)
-        if form.is_valid():
-            mov = form.save(commit=False)
-            mov.eta = eta
-            # Si es un movimiento de Retiro (Ida a puerto), actualizar
-            # camión y conductor en la ETA si se indicaron.
-            if mov.tipo == Movimiento.Tipo.RETIRO:
-                camion_id = request.POST.get("camion_mov")
-                conductor_id = request.POST.get("conductor_mov")
-                update_fields = []
-                if camion_id:
-                    try:
-                        eta.camion = Camion.objects.get(pk=camion_id)
-                        update_fields.append("camion")
-                    except Camion.DoesNotExist:
-                        pass
-                if conductor_id:
-                    try:
-                        eta.conductor = Conductor.objects.get(pk=conductor_id)
-                        update_fields.append("conductor")
-                    except Conductor.DoesNotExist:
-                        pass
-                if update_fields:
-                    update_fields.append("actualizado")
-                    eta.save(update_fields=update_fields)
-                    # Si empresa_responsable no viene en el form, inferirla del conductor
-                    if not mov.empresa_responsable_id and eta.conductor and eta.conductor.empresa:
-                        mov.empresa_responsable = eta.conductor.empresa
-            mov.save()
-            messages.success(request, "Movimiento registrado.")
-        else:
-            messages.error(request, "Revisa los datos del movimiento.")
+        camion_id    = request.POST.get("camion_id", "").strip()
+        conductor_id = request.POST.get("conductor_id", "").strip()
+        eta.camion    = Camion.objects.filter(pk=camion_id).first() if camion_id else None
+        eta.conductor = Conductor.objects.filter(pk=conductor_id).first() if conductor_id else None
+        eta.save(update_fields=["camion", "conductor", "actualizado"])
+        messages.success(request, "Transporte actualizado.")
     return redirect("operaciones:eta_detalle", pk=pk)
 
 
@@ -853,7 +937,7 @@ class ReportesContextMixin:
         )
 
 
-class Reportes(CualquierRol, ReportesContextMixin, ListView):
+class Reportes(SoloAdmin, ReportesContextMixin, ListView):
     model = ETA
     template_name = "operaciones/reportes.html"
     context_object_name = "etas"
@@ -972,7 +1056,7 @@ class Reportes(CualquierRol, ReportesContextMixin, ListView):
         }
 
 
-class ReporteCliente(CualquierRol, ReportesContextMixin, ListView):
+class ReporteCliente(SoloAdmin, ReportesContextMixin, ListView):
     """
     Detalle (drill-down) de un cliente: muestra en grilla todas sus ETAs,
     con filtro opcional por estado. Es el destino al hacer clic en una barra
@@ -1106,7 +1190,7 @@ REPORTES_CSV = {
 
 def exportar_csv(request, tipo):
     """Exporta un reporte (retiro/almacenados/entregas) a CSV."""
-    if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR, ROL_PATIO]):
+    if not en_grupos(request.user, [ROL_ADMIN]):
         return redirect("login")
     estados = REPORTES_CSV.get(tipo)
     if estados is None:

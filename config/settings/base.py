@@ -38,6 +38,7 @@ LOCAL_APPS = [
     "apps.core",
     "apps.operaciones",
     "apps.auditoria",
+    "apps.comunicaciones",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
