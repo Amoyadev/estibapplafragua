@@ -1,12 +1,22 @@
 {% extends "base.html" %}
+{% load op_extras %}
 {% block title %}Correo — {{ correo.asunto|truncatechars:40 }}{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
     <h4 class="mb-0"><i class="bi bi-envelope me-2"></i>Detalle del correo</h4>
-    <a href="{% url 'comunicaciones:bandeja' %}" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-arrow-left me-1"></i>Volver a bandeja
-    </a>
+    <div class="d-flex gap-2">
+        {% if user|en_grupo:"Administrador,Coordinador" and correo.estado == "PENDIENTE" %}
+        <a href="{% url 'comunicaciones:crear_eta' correo.pk %}"
+           class="btn btn-sm fw-semibold text-white"
+           style="background:var(--color-rojo);border-color:#990000;">
+            <i class="bi bi-plus-circle me-1"></i>Crear ETA desde este correo
+        </a>
+        {% endif %}
+        <a href="{% url 'comunicaciones:bandeja' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Volver a bandeja
+        </a>
+    </div>
 </div>
 
 <div class="card mb-3">

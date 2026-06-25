@@ -201,3 +201,86 @@ def ver_correo(request, pk):
         return redirect("login")
     correo = get_object_or_404(CorreoETA, pk=pk)
     return render(request, "comunicaciones/ver_correo.html", {"correo": correo})
+
+
+def crear_eta_desde_correo(request, pk):
+    """
+    Vista intermedia: muestra un formulario pre-llenado con los datos
+    parseados del correo para crear una ETA directamente desde la bandeja.
+    """
+    from datetime import date as date_cls
+    from apps.operaciones.models import (
+        ETA, Cliente, Contenedor, AgentePortuario
+    )
+
+    if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
+        return redirect("login")
+
+    correo = get_object_or_404(CorreoETA, pk=pk)
+
+    # Intentar match automático desde los campos parseados
+    cliente_match = None
+    contenedor_match = None
+    if correo.cliente_nombre:
+        cliente_match = (
+            Cliente.objects.filter(nombre__icontains=correo.cliente_nombre).first()
+        )
+    if correo.contenedor_codigo:
+        contenedor_match = (
+            Contenedor.objects.filter(codigo__iexact=correo.contenedor_codigo).first()
+        )
+
+    if request.method == "POST":
+        numero       = request.POST.get("numero", "").strip()
+        cliente_id   = request.POST.get("cliente")
+        agente_id    = request.POST.get("agente")
+        contenedor_id = request.POST.get("contenedor")
+        fecha_str    = request.POST.get("fecha", "")
+
+        errores = []
+        if not numero:
+            errores.append("El número ETA es requerido.")
+        if ETA.objects.filter(numero=numero).exists():
+            errores.append(f"Ya existe una ETA con número {numero}.")
+        if not cliente_id:
+            errores.append("El cliente es requerido.")
+        if not agente_id:
+            errores.append("El agente portuario es requerido.")
+        if not contenedor_id:
+            errores.append("El contenedor es requerido.")
+
+        if not errores:
+            try:
+                fecha = date_cls.fromisoformat(fecha_str) if fecha_str else timezone.now().date()
+                eta = ETA.objects.create(
+                    numero=numero,
+                    cliente_id=cliente_id,
+                    agente_id=agente_id,
+                    contenedor_id=contenedor_id,
+                    fecha=fecha,
+                    estado=ETA.EstadoCiclo.SOLICITADO,
+                )
+                correo.estado = CorreoETA.Estado.PROCESADO
+                correo.save(update_fields=["estado"])
+                messages.success(
+                    request,
+                    f"ETA {eta.numero} creada exitosamente desde correo.",
+                )
+                return redirect("operaciones:eta_detalle", pk=eta.pk)
+            except Exception as exc:
+                errores.append(f"Error al crear la ETA: {exc}")
+
+        for e in errores:
+            messages.error(request, e)
+
+    ctx = {
+        "correo":          correo,
+        "clientes":        Cliente.objects.all().order_by("nombre"),
+        "agentes":         AgentePortuario.objects.all().order_by("nombre"),
+        "contenedores":    Contenedor.objects.all().order_by("codigo"),
+        "cliente_match":   cliente_match,
+        "contenedor_match": contenedor_match,
+        "hoy":             timezone.now().date().isoformat(),
+        "numero_sugerido": correo.numero_eta or "",
+    }
+    return render(request, "comunicaciones/crear_eta_desde_correo.html", ctx)
