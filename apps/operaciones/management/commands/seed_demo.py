@@ -164,6 +164,9 @@ class Command(BaseCommand):
         self._crear_tattersall(
             options["etas_tat"], agentes, conductores, camiones, contenedores, empresas,
         )
+        self._crear_cronograma_futuro(
+            agentes, clientes, conductores, camiones, contenedores, empresas,
+        )
 
         self.stdout.write(self.style.SUCCESS("\n✅ Datos de demostración cargados."))
         self.stdout.write(
@@ -439,4 +442,91 @@ class Command(BaseCommand):
         self.stdout.write(
             f"  · ETAs Tattersall generadas: {creadas} "
             f"(período 2025-01-01 → hoy)."
+        )
+
+    # ------------------------------------------------------------------
+    def _crear_cronograma_futuro(self, agentes, clientes, conductores,
+                                  camiones, contenedores, empresas):
+        """
+        Genera ETAs futuras para las próximas 3 semanas.
+        Cada conductor tiene 1-2 operaciones por día, con 1 día libre
+        fijo a la semana (repartido entre los conductores).
+        """
+        hoy = timezone.now().date()
+        hasta = hoy + timedelta(days=21)
+
+        # Día libre fijo por conductor (0=lun … 6=dom), repartido
+        dias_libres = {
+            c.pk: i % 7
+            for i, c in enumerate(conductores)
+        }
+
+        # Asignar camión fijo por conductor para consistencia
+        camion_conductor = {
+            c.pk: camiones[i % len(camiones)]
+            for i, c in enumerate(conductores)
+        }
+
+        base = ETA.objects.count()
+        contador = base
+        creadas = 0
+
+        for conductor in conductores:
+            dia_libre = dias_libres[conductor.pk]
+            camion = camion_conductor[conductor.pk]
+            fecha = hoy
+
+            while fecha <= hasta:
+                # Día libre → sin operaciones
+                if fecha.weekday() == dia_libre:
+                    fecha += timedelta(days=1)
+                    continue
+
+                # 1 o 2 operaciones ese día (~30% de chance de 2)
+                n_ops = 2 if random.random() < 0.30 else 1
+                horas_dia = []
+
+                for _ in range(n_ops):
+                    contador += 1
+                    numero = f"ETA-FUT-{contador:04d}"
+                    if ETA.objects.filter(numero=numero).exists():
+                        continue
+
+                    # Hora sin solapar con otra del mismo día/conductor
+                    for _ in range(20):
+                        hora_h = random.randint(7, 17)
+                        if hora_h not in horas_dia:
+                            break
+                    horas_dia.append(hora_h)
+                    hora = time(hora_h, random.choice([0, 15, 30, 45]))
+
+                    estado = random.choice([
+                        ETA.EstadoCiclo.SOLICITADO,
+                        ETA.EstadoCiclo.ASIGNADO,
+                    ])
+
+                    try:
+                        ETA.objects.create(
+                            numero=numero,
+                            cliente=random.choice(clientes),
+                            agente=random.choice(agentes),
+                            contenedor=random.choice(contenedores),
+                            conductor=conductor,
+                            camion=camion,
+                            deposito=random.choice(DEPOSITOS),
+                            fecha=fecha,
+                            fecha_retiro=fecha,
+                            hora_retiro=hora,
+                            tipo_proceso=ETA.TipoProceso.DIRECTO,
+                            estado=estado,
+                            observaciones="Operación futura (cronograma 3 semanas).",
+                        )
+                        creadas += 1
+                    except Exception:
+                        pass
+
+                fecha += timedelta(days=1)
+
+        self.stdout.write(
+            f"  · ETAs futuras (3 semanas, {len(conductores)} conductores): {creadas}."
         )
