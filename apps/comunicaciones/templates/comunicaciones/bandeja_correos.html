@@ -7,23 +7,45 @@
     <div>
         <h3 class="mb-1"><i class="bi bi-envelope-open me-2"></i>Bandeja de correos</h3>
         <p class="text-muted small mb-0">
-            Correos IMAP extraídos de <strong>{{ imap_user }}</strong>.
+            Buzón: <strong>{{ graph_user }}</strong> via Microsoft Graph API.
             Los correos con «ETA en Secuencia» son candidatos a crear una ETA.
         </p>
     </div>
     <div class="d-flex gap-2 align-items-center">
-        {# Sync button — solo Admin #}
         {% if user|en_grupo:"Administrador" %}
         <form method="post" action="{% url 'comunicaciones:sincronizar' %}">
             {% csrf_token %}
             <button class="btn btn-sm fw-semibold text-white"
-                    style="background:#CC0000; border-color:#990000;">
+                    {% if not graph_ok %}disabled title="Graph API no configurada"{% endif %}
+                    style="background:{% if graph_ok %}#CC0000{% else %}#adb5bd{% endif %};
+                           border-color:{% if graph_ok %}#990000{% else %}#adb5bd{% endif %};">
                 <i class="bi bi-arrow-clockwise me-1"></i>Sincronizar correos
             </button>
         </form>
         {% endif %}
     </div>
 </div>
+
+{# Aviso de configuración Graph API #}
+{% if user|en_grupo:"Administrador" and not graph_ok %}
+<div class="alert alert-warning d-flex gap-3 align-items-start mb-3">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 text-warning"></i>
+    <div class="small">
+        <strong>Graph API no configurada.</strong>
+        Definí estas variables en el <code>.env</code> del servidor y reiniciá el contenedor:
+        <div class="mt-2 font-monospace" style="background:#fff3cd;padding:.5rem .75rem;border-radius:.4rem;line-height:1.8;">
+            GRAPH_TENANT_ID=&lt;ID del directorio Azure AD&gt;<br>
+            GRAPH_CLIENT_ID=&lt;ID de la app registrada&gt;<br>
+            GRAPH_CLIENT_SECRET=&lt;Secreto de la app&gt;<br>
+            GRAPH_USER_EMAIL={{ graph_user }}
+        </div>
+        <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+           target="_blank" class="btn btn-sm btn-outline-secondary mt-2">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Ir a Azure AD → Registros de apps
+        </a>
+    </div>
+</div>
+{% endif %}
 
 {# Resumen de estado #}
 <div class="row g-2 mb-3">
@@ -148,14 +170,13 @@
     </div>
 </div>
 
-{# Nota config IMAP #}
 {% if user|en_grupo:"Administrador" %}
 <div class="alert alert-light border mt-3 small">
     <i class="bi bi-info-circle me-1"></i>
-    Configuración IMAP: define las variables de entorno
-    <code>IMAP_HOST</code>, <code>IMAP_PORT</code>, <code>IMAP_USER</code>, <code>IMAP_PASSWORD</code>
-    en el servidor (archivo <code>.env</code> del droplet).
-    La sincronización descarga correos de los últimos <strong>30 días</strong>.
+    Conectado via <strong>Microsoft Graph API</strong> (OAuth2).
+    La sincronización descarga correos de los últimos <strong>{{ IMAP_DIAS|default:"30" }} días</strong>.
+    Para configurar permisos en Azure AD: la app necesita permiso de aplicación <code>Mail.Read</code>
+    con consentimiento de administrador.
 </div>
 {% endif %}
 

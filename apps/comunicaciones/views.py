@@ -1,8 +1,19 @@
-"""Vistas de la bandeja de correos IMAP — Estibapp."""
-import email
-import imaplib
+"""Vistas de la bandeja de correos — Estibapp.
+
+Método de sincronización: Microsoft Graph API (OAuth2 client credentials).
+El flujo IMAP con Basic Auth fue deshabilitado por Microsoft en octubre 2022.
+
+Variables de entorno requeridas (en .env del droplet):
+    GRAPH_TENANT_ID      ID del tenant Azure AD (directorio)
+    GRAPH_CLIENT_ID      ID de la app registrada en Azure AD
+    GRAPH_CLIENT_SECRET  Secreto de la app
+    GRAPH_USER_EMAIL     Buzón a leer (ej. nfarias@logisticayalmacenaje.cl)
+    IMAP_DIAS            Ventana de búsqueda en días (default 30)
+"""
+import os
 import re
-from email.header import decode_header
+
+import requests as http_requests
 
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,127 +23,123 @@ from apps.operaciones.permissions import ROL_ADMIN, ROL_COORDINADOR, en_grupos
 
 from .models import CorreoETA
 
-# ── Configuración IMAP (variables de entorno en producción) ──────────────────
-import os
+# ── Configuración Graph API ───────────────────────────────────────────────────
+GRAPH_TENANT_ID     = os.environ.get("GRAPH_TENANT_ID", "")
+GRAPH_CLIENT_ID     = os.environ.get("GRAPH_CLIENT_ID", "")
+GRAPH_CLIENT_SECRET = os.environ.get("GRAPH_CLIENT_SECRET", "")
+GRAPH_USER_EMAIL    = os.environ.get(
+    "GRAPH_USER_EMAIL",
+    os.environ.get("IMAP_USER", "nfarias@logisticayalmacenaje.cl"),
+)
+IMAP_DIAS = int(os.environ.get("IMAP_DIAS", "30"))
 
-IMAP_HOST     = os.environ.get("IMAP_HOST",  "outlook.office365.com")
-IMAP_PORT     = int(os.environ.get("IMAP_PORT", "993"))
-IMAP_USER     = os.environ.get("IMAP_USER",  "nfarias@logisticayalmacenaje.cl")
-IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD", "")
-IMAP_FOLDER   = os.environ.get("IMAP_FOLDER", "INBOX")
-IMAP_DIAS     = int(os.environ.get("IMAP_DIAS", "30"))  # ventana de búsqueda
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _decode_header_str(raw):
-    """Decodifica un header de correo (puede estar en base64/QP)."""
-    parts = decode_header(raw or "")
-    resultado = []
-    for part, enc in parts:
-        if isinstance(part, bytes):
-            resultado.append(part.decode(enc or "utf-8", errors="replace"))
-        else:
-            resultado.append(str(part))
-    return " ".join(resultado).strip()
+GRAPH_CONFIGURADO = all([GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET])
 
 
-def _get_body(msg):
-    """Extrae el cuerpo en texto plano del mensaje."""
-    if msg.is_multipart():
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/plain" and "attachment" not in cd:
-                charset = part.get_content_charset() or "utf-8"
-                return part.get_payload(decode=True).decode(charset, errors="replace")
-    payload = msg.get_payload(decode=True)
-    if payload:
-        charset = msg.get_content_charset() or "utf-8"
-        return payload.decode(charset, errors="replace")
-    return ""
-
+# ── Helpers de parseo ─────────────────────────────────────────────────────────
 
 def _parse_campo(cuerpo, patron):
-    """Busca el primer grupo del patrón (case-insensitive) en el cuerpo."""
     m = re.search(patron, cuerpo, re.IGNORECASE)
     return m.group(1).strip() if m else ""
 
 
-def _fetch_imap():
+def _limpiar_html(html):
+    """Elimina tags HTML y colapsa espacios."""
+    texto = re.sub(r"<[^>]+>", " ", html or "")
+    return re.sub(r"\s+", " ", texto).strip()
+
+
+# ── Lógica Graph API ──────────────────────────────────────────────────────────
+
+def _get_access_token():
+    """Obtiene token OAuth2 via client_credentials para Graph API."""
+    url = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token"
+    resp = http_requests.post(url, data={
+        "grant_type":    "client_credentials",
+        "client_id":     GRAPH_CLIENT_ID,
+        "client_secret": GRAPH_CLIENT_SECRET,
+        "scope":         "https://graph.microsoft.com/.default",
+    }, timeout=15)
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
+def _fetch_graph():
     """
-    Conecta al buzón IMAP, descarga correos de los últimos IMAP_DIAS días
-    y guarda los nuevos en CorreoETA.  Retorna el número de registros nuevos.
+    Lee correos del buzón via Microsoft Graph API y guarda los nuevos en CorreoETA.
+    Retorna el número de registros nuevos.
     """
     from datetime import datetime, timedelta, timezone as dt_tz
 
-    mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
-    mail.login(IMAP_USER, IMAP_PASSWORD)
-    mail.select(IMAP_FOLDER)
+    token = _get_access_token()
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
-    # Fecha límite en formato que IMAP entiende: "07-Jun-2026"
-    desde = (datetime.now(dt_tz.utc) - timedelta(days=IMAP_DIAS)).strftime("%d-%b-%Y")
-    _, ids = mail.search(None, f'SINCE "{desde}" NOT DELETED')
+    desde = (
+        datetime.now(dt_tz.utc) - timedelta(days=IMAP_DIAS)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    url = (
+        f"https://graph.microsoft.com/v1.0/users/{GRAPH_USER_EMAIL}/messages"
+        f"?$filter=receivedDateTime ge {desde}"
+        f"&$select=id,subject,from,receivedDateTime,body,isRead"
+        f"&$top=50&$orderby=receivedDateTime desc"
+    )
 
     nuevos = 0
-    for num in ids[0].split():
-        _, data = mail.fetch(num, "(RFC822)")
-        raw = data[0][1]
-        msg = email.message_from_bytes(raw)
+    while url:
+        resp = http_requests.get(url, headers=headers, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
 
-        msg_id  = msg.get("Message-ID", "").strip() or f"_no_id_{num.decode()}"
-        asunto  = _decode_header_str(msg.get("Subject", ""))
-        de_raw  = _decode_header_str(msg.get("From", ""))
-        date_str = msg.get("Date", "")
+        for msg in data.get("value", []):
+            msg_id = msg.get("id", "")
+            if not msg_id or CorreoETA.objects.filter(msg_id=msg_id).exists():
+                continue
 
-        # Parsear fecha
-        try:
-            from email.utils import parsedate_to_datetime
-            fecha_correo = parsedate_to_datetime(date_str)
-            if timezone.is_naive(fecha_correo):
-                fecha_correo = timezone.make_aware(fecha_correo)
-        except Exception:
-            fecha_correo = timezone.now()
+            asunto    = msg.get("subject", "") or ""
+            de_raw    = (msg.get("from") or {}).get("emailAddress", {}).get("address", "")
+            fecha_str = msg.get("receivedDateTime", "")
+            cuerpo_raw = (msg.get("body") or {}).get("content", "")
+            cuerpo    = _limpiar_html(cuerpo_raw)
 
-        # Saltar si ya existe
-        if CorreoETA.objects.filter(msg_id=msg_id).exists():
-            continue
+            # Parsear fecha ISO
+            try:
+                fecha_correo = datetime.fromisoformat(fecha_str.replace("Z", "+00:00"))
+            except Exception:
+                fecha_correo = timezone.now()
 
-        cuerpo = _get_body(msg)
+            es_eta = any(
+                k in asunto.upper()
+                for k in ("ETA EN SECUENCIA", "ETA SECUENCIA", "ETA", "SECUENCIA")
+            )
 
-        # Parsear campos solo si es un correo de ETA
-        es_eta = any(
-            k in asunto.upper()
-            for k in ("ETA EN SECUENCIA", "ETA SECUENCIA", "ETA", "SECUENCIA")
-        )
+            numero_eta        = _parse_campo(cuerpo, r"ETA[:\s#]+([A-Z0-9\-]+)") if es_eta else ""
+            cliente_nombre    = _parse_campo(cuerpo, r"Cliente[:\s]+(.+?)[\r\n]") if es_eta else ""
+            puerto            = _parse_campo(cuerpo, r"Puerto[:\s]+(.+?)[\r\n]")  if es_eta else ""
+            m_cont            = re.search(r"[A-Z]{4}[0-9]{7}", cuerpo)
+            contenedor_codigo = m_cont.group(0) if m_cont else ""
 
-        numero_eta        = _parse_campo(cuerpo, r"ETA[:\s#]+([A-Z0-9\-]+)") if es_eta else ""
-        cliente_nombre    = _parse_campo(cuerpo, r"Cliente[:\s]+(.+?)[\r\n]") if es_eta else ""
-        puerto            = _parse_campo(cuerpo, r"Puerto[:\s]+(.+?)[\r\n]")  if es_eta else ""
-        contenedor_codigo = re.search(r"[A-Z]{4}[0-9]{7}", cuerpo)
-        contenedor_codigo = contenedor_codigo.group(0) if contenedor_codigo else ""
+            CorreoETA.objects.create(
+                msg_id=msg_id,
+                asunto=asunto,
+                remitente=de_raw,
+                fecha_correo=fecha_correo,
+                numero_eta=numero_eta,
+                cliente_nombre=cliente_nombre,
+                puerto=puerto,
+                contenedor_codigo=contenedor_codigo,
+                cuerpo=cuerpo[:8000],
+            )
+            nuevos += 1
 
-        CorreoETA.objects.create(
-            msg_id=msg_id,
-            asunto=asunto,
-            remitente=de_raw,
-            fecha_correo=fecha_correo,
-            numero_eta=numero_eta,
-            cliente_nombre=cliente_nombre,
-            puerto=puerto,
-            contenedor_codigo=contenedor_codigo,
-            cuerpo=cuerpo[:8000],  # limitar tamaño
-        )
-        nuevos += 1
+        url = data.get("@odata.nextLink")  # paginación automática
 
-    mail.logout()
     return nuevos
 
 
-# ── Vistas ─────────────────────────────────────────────────────────────────────
+# ── Vistas ────────────────────────────────────────────────────────────────────
 
 def bandeja_correos(request):
-    """Muestra la bandeja de correos IMAP extraídos."""
     if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
         return redirect("login")
 
@@ -141,48 +148,49 @@ def bandeja_correos(request):
     if estado_filtro:
         qs = qs.filter(estado=estado_filtro)
 
-    correos = qs[:100]
-    total   = CorreoETA.objects.count()
+    correos    = qs[:100]
+    total      = CorreoETA.objects.count()
     pendientes = CorreoETA.objects.filter(estado=CorreoETA.Estado.PENDIENTE).count()
 
     return render(request, "comunicaciones/bandeja_correos.html", {
-        "correos":       correos,
-        "total":         total,
-        "pendientes":    pendientes,
-        "estado_filtro": estado_filtro,
-        "estados":       CorreoETA.Estado.choices,
-        "imap_user":     IMAP_USER,
+        "correos":        correos,
+        "total":          total,
+        "pendientes":     pendientes,
+        "estado_filtro":  estado_filtro,
+        "estados":        CorreoETA.Estado.choices,
+        "graph_user":     GRAPH_USER_EMAIL,
+        "graph_ok":       GRAPH_CONFIGURADO,
     })
 
 
 def sincronizar_correos(request):
-    """Dispara la sincronización IMAP y redirige a la bandeja."""
     if not en_grupos(request.user, [ROL_ADMIN]):
         messages.error(request, "Solo el administrador puede sincronizar correos.")
         return redirect("comunicaciones:bandeja")
+
     if request.method == "POST":
-        if not IMAP_PASSWORD:
+        if not GRAPH_CONFIGURADO:
             messages.warning(
                 request,
-                "Contraseña IMAP no configurada. "
-                "Define la variable de entorno IMAP_PASSWORD en el servidor."
+                "Graph API no configurada. Definí GRAPH_TENANT_ID, "
+                "GRAPH_CLIENT_ID y GRAPH_CLIENT_SECRET en el .env del servidor."
             )
         else:
             try:
-                n = _fetch_imap()
+                n = _fetch_graph()
                 messages.success(
                     request,
                     f"Sincronización completada: {n} correo(s) nuevo(s) descargado(s)."
                 )
-            except imaplib.IMAP4.error as exc:
-                messages.error(request, f"Error IMAP: {exc}")
+            except http_requests.HTTPError as exc:
+                messages.error(request, f"Error HTTP Graph API: {exc}")
             except Exception as exc:
                 messages.error(request, f"Error inesperado: {exc}")
+
     return redirect("comunicaciones:bandeja")
 
 
 def marcar_correo(request, pk):
-    """Cambia el estado de un correo (PROCESADO / IGNORADO)."""
     if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
         return redirect("login")
     correo = get_object_or_404(CorreoETA, pk=pk)
@@ -196,7 +204,6 @@ def marcar_correo(request, pk):
 
 
 def ver_correo(request, pk):
-    """Muestra el cuerpo completo de un correo."""
     if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
         return redirect("login")
     correo = get_object_or_404(CorreoETA, pk=pk)
@@ -218,7 +225,6 @@ def crear_eta_desde_correo(request, pk):
 
     correo = get_object_or_404(CorreoETA, pk=pk)
 
-    # Intentar match automático desde los campos parseados
     cliente_match = None
     contenedor_match = None
     if correo.cliente_nombre:
@@ -231,11 +237,11 @@ def crear_eta_desde_correo(request, pk):
         )
 
     if request.method == "POST":
-        numero       = request.POST.get("numero", "").strip()
-        cliente_id   = request.POST.get("cliente")
-        agente_id    = request.POST.get("agente")
+        numero        = request.POST.get("numero", "").strip()
+        cliente_id    = request.POST.get("cliente")
+        agente_id     = request.POST.get("agente")
         contenedor_id = request.POST.get("contenedor")
-        fecha_str    = request.POST.get("fecha", "")
+        fecha_str     = request.POST.get("fecha", "")
 
         errores = []
         if not numero:
@@ -262,10 +268,7 @@ def crear_eta_desde_correo(request, pk):
                 )
                 correo.estado = CorreoETA.Estado.PROCESADO
                 correo.save(update_fields=["estado"])
-                messages.success(
-                    request,
-                    f"ETA {eta.numero} creada exitosamente desde correo.",
-                )
+                messages.success(request, f"ETA {eta.numero} creada exitosamente desde correo.")
                 return redirect("operaciones:eta_detalle", pk=eta.pk)
             except Exception as exc:
                 errores.append(f"Error al crear la ETA: {exc}")
@@ -274,13 +277,13 @@ def crear_eta_desde_correo(request, pk):
             messages.error(request, e)
 
     ctx = {
-        "correo":          correo,
-        "clientes":        Cliente.objects.all().order_by("nombre"),
-        "agentes":         AgentePortuario.objects.all().order_by("nombre"),
-        "contenedores":    Contenedor.objects.all().order_by("codigo"),
-        "cliente_match":   cliente_match,
+        "correo":           correo,
+        "clientes":         Cliente.objects.all().order_by("nombre"),
+        "agentes":          AgentePortuario.objects.all().order_by("nombre"),
+        "contenedores":     Contenedor.objects.all().order_by("codigo"),
+        "cliente_match":    cliente_match,
         "contenedor_match": contenedor_match,
-        "hoy":             timezone.now().date().isoformat(),
-        "numero_sugerido": correo.numero_eta or "",
+        "hoy":              timezone.now().date().isoformat(),
+        "numero_sugerido":  correo.numero_eta or "",
     }
     return render(request, "comunicaciones/crear_eta_desde_correo.html", ctx)
