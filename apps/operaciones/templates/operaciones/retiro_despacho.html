@@ -2,177 +2,193 @@
 {% block title %}Retiro / Despacho — Estibapp{% endblock %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4 gap-2">
     <div>
-        <h3 class="mb-0">Cronograma Retiro / Despacho</h3>
-        <p class="text-muted small mb-0">Vista operacional por conductor y patente</p>
+        <h3 class="mb-0">Cronograma por conductor</h3>
+        <p class="text-muted small mb-0">Seleccioná un conductor para ver su agenda de retiros y despachos</p>
     </div>
     <a href="{% url 'operaciones:recuentos' %}" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> Recuentos
+        <i class="bi bi-arrow-left me-1"></i>Recuentos
     </a>
 </div>
 
-<!-- Filtro -->
-<form method="get" class="mb-4">
-    <div class="input-group" style="max-width:420px;">
-        <span class="input-group-text bg-white">
-            <i class="bi bi-search text-muted"></i>
-        </span>
-        <input type="text" name="q" value="{{ q }}" class="form-control"
-               placeholder="Buscar por conductor o patente…" autofocus>
-        {% if q %}
-        <a href="{% url 'operaciones:retiro_despacho' %}" class="btn btn-outline-secondary">
-            <i class="bi bi-x"></i>
-        </a>
-        {% endif %}
-        <button class="btn" style="background:var(--color-rojo);color:#fff;border-color:#990000;">
-            Filtrar
-        </button>
-    </div>
-    {% if q %}
-    <p class="text-muted small mt-1 mb-0">
-        Mostrando resultados para <strong>«{{ q }}»</strong> — {{ total_activas }} ETA{{ total_activas|pluralize:"s" }}
-    </p>
-    {% endif %}
-</form>
-
-<!-- KPIs -->
+<!-- Selector de conductores -->
 <div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <div class="card text-center" style="border-top:3px solid var(--color-rojo);">
-            <div class="card-body py-3">
-                <div class="small text-muted">ETAs activas</div>
-                <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ total_activas }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card text-center" style="border-top:3px solid #f59e0b;">
-            <div class="card-body py-3">
-                <div class="small text-muted">Retiro hoy</div>
-                <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ hoy_count }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card text-center" style="border-top:3px solid #16a34a;">
-            <div class="card-body py-3">
-                <div class="small text-muted">Próximos 7 días</div>
-                <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ proximas }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card text-center" style="border-top:3px solid #6c757d;">
-            <div class="card-body py-3">
-                <div class="small text-muted">Sin fecha asignada</div>
-                <div class="fs-2 fw-bold text-muted">{{ sin_fecha }}</div>
-            </div>
-        </div>
-    </div>
-</div>
+{% for item in conductores_lista %}
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <a href="?conductor={{ item.conductor.pk }}"
+           class="text-decoration-none"
+           style="display:block;">
+            <div class="card h-100 {% if conductor_id == item.conductor.pk|stringformat:'s' %}border-2{% endif %}"
+                 style="{% if conductor_id == item.conductor.pk|stringformat:'s' %}border-color:var(--color-rojo)!important;{% endif %}
+                        transition:box-shadow .15s,transform .15s;cursor:pointer;"
+                 onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.12)';this.style.transform='translateY(-2px)'"
+                 onmouseout="this.style.boxShadow='';this.style.transform=''">
 
-{% if not grupos %}
-<div class="alert alert-info">
-    {% if q %}
-        No se encontraron ETAs para <strong>«{{ q }}»</strong>.
-        <a href="{% url 'operaciones:retiro_despacho' %}">Ver todas</a>
-    {% else %}
-        No hay ETAs con conductor asignado en ciclo activo.
-    {% endif %}
-</div>
-{% else %}
+                <!-- Top strip color -->
+                <div style="height:4px;background:{% if conductor_id == item.conductor.pk|stringformat:'s' %}var(--color-rojo){% else %}#2c2c3a{% endif %};
+                            border-radius:.375rem .375rem 0 0;"></div>
 
-{% for grupo in grupos %}
-<div class="card mb-3">
-    <!-- Encabezado conductor -->
-    <div class="card-header d-flex align-items-center justify-content-between py-2"
-         style="background:#2c2c3a;color:#fff;border-radius:.375rem .375rem 0 0;">
-        <div class="d-flex align-items-center gap-3">
-            <span style="display:inline-flex;align-items:center;justify-content:center;
-                         width:34px;height:34px;background:var(--color-rojo);
-                         border-radius:50%;flex-shrink:0;">
-                <i class="bi bi-person-fill" style="color:#fff;font-size:1rem;"></i>
-            </span>
-            <div>
-                <div class="fw-semibold" style="font-size:.95rem;">{{ grupo.conductor.nombre }}</div>
-                <div class="small" style="color:rgba(255,255,255,.65);">
-                    {% if grupo.conductor.empresa %}{{ grupo.conductor.empresa.nombre }}{% endif %}
+                <div class="card-body pb-2">
+                    <!-- Avatar + nombre -->
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span style="display:inline-flex;align-items:center;justify-content:center;
+                                     width:36px;height:36px;flex-shrink:0;border-radius:50%;
+                                     background:{% if conductor_id == item.conductor.pk|stringformat:'s' %}var(--color-rojo){% else %}#2c2c3a{% endif %};">
+                            <i class="bi bi-person-fill" style="color:#fff;font-size:1rem;"></i>
+                        </span>
+                        <div style="min-width:0;">
+                            <div class="fw-semibold text-truncate" style="font-size:.9rem;color:#2c2c3a;">
+                                {{ item.conductor.nombre }}
+                            </div>
+                            {% if item.conductor.empresa %}
+                            <div class="text-muted" style="font-size:.75rem;">{{ item.conductor.empresa.nombre }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Patente + badges -->
+                    <div class="d-flex align-items-center justify-content-between mt-1">
+                        <span class="badge text-bg-light border font-monospace" style="font-size:.75rem;">
+                            <i class="bi bi-truck me-1 text-muted"></i>{{ item.patente }}
+                        </span>
+                        <div class="d-flex gap-1">
+                            <span class="badge" style="background:#2c2c3a;font-size:.72rem;" title="ETAs activas">
+                                {{ item.total }}
+                            </span>
+                            {% if item.hoy > 0 %}
+                            <span class="badge bg-warning text-dark" style="font-size:.72rem;" title="Retiros hoy">
+                                Hoy {{ item.hoy }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="text-end">
-            <span class="badge" style="background:rgba(255,255,255,.15);font-size:.8rem;">
-                {{ grupo.etas|length }} ETA{{ grupo.etas|length|pluralize:"s" }}
+        </a>
+    </div>
+{% empty %}
+    <div class="col-12">
+        <div class="alert alert-info">No hay conductores con ETAs activas asignadas.</div>
+    </div>
+{% endfor %}
+</div>
+
+<!-- Tabla del conductor seleccionado -->
+{% if conductor_sel %}
+<div id="tabla-conductor">
+    <!-- Encabezado conductor seleccionado -->
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <span style="display:inline-flex;align-items:center;justify-content:center;
+                         width:42px;height:42px;background:var(--color-rojo);
+                         border-radius:50%;flex-shrink:0;box-shadow:0 2px 8px rgba(204,0,0,.35);">
+                <i class="bi bi-person-fill" style="color:#fff;font-size:1.2rem;"></i>
             </span>
+            <div>
+                <h5 class="mb-0" style="color:#2c2c3a;">{{ conductor_sel.nombre }}</h5>
+                <span class="text-muted small">
+                    {% if conductor_sel.empresa %}{{ conductor_sel.empresa.nombre }} · {% endif %}
+                    {{ total_sel }} ETA{{ total_sel|pluralize:"s" }} activa{{ total_sel|pluralize:"s" }}
+                    {% if hoy_sel > 0 %}
+                    · <span class="text-warning fw-semibold">{{ hoy_sel }} hoy</span>
+                    {% endif %}
+                    {% if proximas_sel > 0 %}
+                    · <span class="text-success">{{ proximas_sel }} próximos 7 días</span>
+                    {% endif %}
+                </span>
+            </div>
         </div>
+        <a href="{% url 'operaciones:retiro_despacho' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x me-1"></i>Limpiar selección
+        </a>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>Patente</th>
-                    <th>ETA</th>
-                    <th>Cliente</th>
-                    <th>Contenedor</th>
-                    <th>Fecha retiro</th>
-                    <th>Estado</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for eta in grupo.etas %}
-            {% with fr=eta.fecha_retiro %}
-            <tr {% if fr == hoy %}class="table-warning"
-                {% elif fr and fr < hoy %}class="table-danger"{% endif %}>
-                <td>
-                    {% if eta.camion %}
-                    <span class="badge text-bg-light border font-monospace">
-                        <i class="bi bi-truck me-1 text-muted"></i>{{ eta.camion.patente }}
-                    </span>
-                    {% else %}
-                    <span class="text-muted small">—</span>
-                    {% endif %}
-                </td>
-                <td class="font-monospace fw-semibold">{{ eta.numero }}</td>
-                <td>{{ eta.cliente.nombre }}</td>
-                <td class="font-monospace small">{{ eta.contenedor.codigo }}</td>
-                <td>
-                    {% if fr %}
-                        {% if fr == hoy %}
-                        <span class="badge bg-warning text-dark">
-                            <i class="bi bi-calendar-check me-1"></i>Hoy
-                        </span>
-                        {% elif fr < hoy %}
-                        <span class="badge bg-danger">
-                            <i class="bi bi-exclamation-circle me-1"></i>{{ fr|date:"d/m/Y" }}
+    <!-- Tabla -->
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead style="background:#2c2c3a;color:#fff;">
+                    <tr>
+                        <th class="ps-3">Patente</th>
+                        <th>ETA</th>
+                        <th>Cliente</th>
+                        <th>Contenedor</th>
+                        <th>Fecha retiro</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for eta in etas_sel %}
+                {% with fr=eta.fecha_retiro %}
+                <tr {% if fr == hoy %}style="background:#fff8e1;"
+                    {% elif fr and fr < hoy %}style="background:#fff5f5;"{% endif %}>
+                    <td class="ps-3">
+                        {% if eta.camion %}
+                        <span class="badge text-bg-light border font-monospace">
+                            <i class="bi bi-truck me-1 text-muted"></i>{{ eta.camion.patente }}
                         </span>
                         {% else %}
-                        <span class="text-dark small">{{ fr|date:"d/m/Y" }}</span>
+                        <span class="text-muted small">—</span>
                         {% endif %}
-                    {% else %}
-                    <span class="text-muted small">Sin fecha</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <span class="badge bg-secondary badge-estado">{{ eta.get_estado_display }}</span>
-                </td>
-                <td>
-                    <a href="{% url 'operaciones:eta_detalle' eta.pk %}"
-                       class="btn btn-xs btn-outline-primary"
-                       style="font-size:.75rem;padding:.15rem .5rem;">
-                        Ver
-                    </a>
-                </td>
-            </tr>
-            {% endwith %}
-            {% endfor %}
-            </tbody>
-        </table>
+                    </td>
+                    <td class="font-monospace fw-semibold" style="color:#2c2c3a;">{{ eta.numero }}</td>
+                    <td>{{ eta.cliente.nombre }}</td>
+                    <td>
+                        <span class="font-monospace small badge text-bg-light border">{{ eta.contenedor.codigo }}</span>
+                    </td>
+                    <td>
+                        {% if fr %}
+                            {% if fr == hoy %}
+                            <span class="badge bg-warning text-dark">
+                                <i class="bi bi-calendar-check me-1"></i>Hoy
+                            </span>
+                            {% elif fr < hoy %}
+                            <span class="badge bg-danger">
+                                <i class="bi bi-exclamation-circle me-1"></i>{{ fr|date:"d/m/Y" }}
+                            </span>
+                            {% else %}
+                            <span class="small text-dark">{{ fr|date:"d/m/Y" }}</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted small">Sin fecha</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary">{{ eta.get_estado_display }}</span>
+                    </td>
+                    <td>
+                        <a href="{% url 'operaciones:eta_detalle' eta.pk %}"
+                           class="btn btn-sm btn-outline-primary"
+                           style="font-size:.75rem;padding:.2rem .6rem;">
+                            Ver
+                        </a>
+                    </td>
+                </tr>
+                {% endwith %}
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">
+                        Sin ETAs activas para este conductor.
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
-{% endfor %}
 
+<script>
+    // Auto-scroll a la tabla al seleccionar conductor
+    document.addEventListener("DOMContentLoaded", function () {
+        const tabla = document.getElementById("tabla-conductor");
+        if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+</script>
 {% endif %}
+
 {% endblock %}

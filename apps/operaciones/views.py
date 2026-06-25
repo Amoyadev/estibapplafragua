@@ -992,50 +992,66 @@ class RetiroDespacho(CualquierRol, TemplateView):
 
     def get_context_data(self, **kwargs):
         from datetime import timedelta
+        from .models import Conductor as ConductorModel
         ctx = super().get_context_data(**kwargs)
-        q = self.request.GET.get("q", "").strip()
         hoy = timezone.now().date()
+        conductor_id = self.request.GET.get("conductor", "").strip()
 
-        etas_qs = (
-            ETA.objects.select_related(
-                "conductor", "conductor__empresa", "camion", "cliente", "contenedor"
-            )
-            .filter(conductor__isnull=False)
-            .exclude(estado__in=[ETA.EstadoCiclo.DESPACHADO_PUERTO])
-            .order_by("fecha_retiro", "fecha", "conductor__nombre")
+        # Todos los conductores con ETAs activas (para el selector)
+        ids_con_etas = (
+            ETA.objects.filter(conductor__isnull=False)
+            .exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
+            .values_list("conductor_id", flat=True)
+            .distinct()
+        )
+        conductores = (
+            ConductorModel.objects.filter(pk__in=ids_con_etas)
+            .select_related("empresa")
+            .order_by("nombre")
         )
 
-        if q:
-            etas_qs = etas_qs.filter(
-                Q(conductor__nombre__icontains=q) | Q(camion__patente__icontains=q)
-            )
-
-        # KPIs rápidos
-        ctx["total_activas"] = etas_qs.count()
-        ctx["hoy_count"] = etas_qs.filter(fecha_retiro=hoy).count()
-        ctx["sin_fecha"] = etas_qs.filter(fecha_retiro__isnull=True).count()
-        ctx["proximas"] = etas_qs.filter(
-            fecha_retiro__gt=hoy, fecha_retiro__lte=hoy + timedelta(days=7)
-        ).count()
-
-        # Conductores únicos con resumen
-        conductores_ids = (
-            etas_qs.values_list("conductor_id", flat=True).distinct()
-        )
-        from .models import Conductor
-        conductores = Conductor.objects.filter(pk__in=conductores_ids).select_related(
-            "empresa"
-        ).order_by("nombre")
-
-        grupos = []
+        # Enriquecer con conteo de ETAs y próxima fecha
+        conductores_lista = []
         for c in conductores:
-            filas = [e for e in etas_qs if e.conductor_id == c.pk]
-            if filas:
-                grupos.append({"conductor": c, "etas": filas})
+            etas_c = ETA.objects.filter(
+                conductor=c
+            ).exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
+            patente = (
+                etas_c.exclude(camion__isnull=True)
+                .values_list("camion__patente", flat=True)
+                .first()
+            )
+            conductores_lista.append({
+                "conductor": c,
+                "total": etas_c.count(),
+                "hoy": etas_c.filter(fecha_retiro=hoy).count(),
+                "patente": patente or "—",
+            })
 
-        ctx["grupos"] = grupos
-        ctx["q"] = q
+        ctx["conductores_lista"] = conductores_lista
         ctx["hoy"] = hoy
+        ctx["conductor_id"] = conductor_id
+
+        # Si hay conductor seleccionado → cargar sus ETAs
+        if conductor_id:
+            try:
+                conductor_sel = ConductorModel.objects.select_related("empresa").get(pk=conductor_id)
+                etas_sel = (
+                    ETA.objects.select_related("camion", "cliente", "contenedor")
+                    .filter(conductor=conductor_sel)
+                    .exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
+                    .order_by("fecha_retiro", "fecha")
+                )
+                ctx["conductor_sel"] = conductor_sel
+                ctx["etas_sel"] = etas_sel
+                ctx["total_sel"] = etas_sel.count()
+                ctx["hoy_sel"] = etas_sel.filter(fecha_retiro=hoy).count()
+                ctx["proximas_sel"] = etas_sel.filter(
+                    fecha_retiro__gt=hoy, fecha_retiro__lte=hoy + timedelta(days=7)
+                ).count()
+            except ConductorModel.DoesNotExist:
+                pass
+
         return ctx
 
 

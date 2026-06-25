@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Recuentos — Estibapp{% endblock %}
 {% block content %}
-<h3 class="mb-3">Recuentos por cliente</h3>
+<div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+    <h3 class="mb-0">Recuentos por cliente</h3>
+    <a href="{% url 'operaciones:retiro_despacho' %}"
+       class="btn btn-sm fw-semibold text-white"
+       style="background:#2c2c3a;border-color:#2c2c3a;">
+        <i class="bi bi-truck me-1"></i>Ver conductor
+    </a>
+</div>
 
 <div class="row g-3 mb-4">
     <div class="col-md-6">
