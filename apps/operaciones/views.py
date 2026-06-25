@@ -1035,20 +1035,43 @@ class RetiroDespacho(CualquierRol, TemplateView):
         # Si hay conductor seleccionado → cargar sus ETAs
         if conductor_id:
             try:
+                ahora = timezone.localtime(timezone.now())
                 conductor_sel = ConductorModel.objects.select_related("empresa").get(pk=conductor_id)
                 etas_sel = (
                     ETA.objects.select_related("camion", "cliente", "contenedor")
                     .filter(conductor=conductor_sel)
                     .exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
-                    .order_by("fecha_retiro", "fecha")
+                    .order_by("fecha_retiro", "hora_retiro", "fecha")
                 )
+
+                # ETAs de hoy con metadata de puntualidad
+                etas_hoy_raw = etas_sel.filter(fecha_retiro=hoy)
+                etas_hoy = []
+                for e in etas_hoy_raw:
+                    if e.hora_retiro:
+                        minutos_diff = (
+                            ahora.hour * 60 + ahora.minute
+                        ) - (e.hora_retiro.hour * 60 + e.hora_retiro.minute)
+                        estado_hora = "tarde" if minutos_diff > 0 else "pendiente"
+                        retraso_min = minutos_diff if minutos_diff > 0 else None
+                    else:
+                        estado_hora = "sin_hora"
+                        retraso_min = None
+                    etas_hoy.append({
+                        "eta": e,
+                        "estado_hora": estado_hora,
+                        "retraso_min": retraso_min,
+                    })
+
                 ctx["conductor_sel"] = conductor_sel
                 ctx["etas_sel"] = etas_sel
+                ctx["etas_hoy"] = etas_hoy
                 ctx["total_sel"] = etas_sel.count()
-                ctx["hoy_sel"] = etas_sel.filter(fecha_retiro=hoy).count()
+                ctx["hoy_sel"] = len(etas_hoy)
                 ctx["proximas_sel"] = etas_sel.filter(
                     fecha_retiro__gt=hoy, fecha_retiro__lte=hoy + timedelta(days=7)
                 ).count()
+                ctx["hora_actual"] = ahora.strftime("%H:%M")
             except ConductorModel.DoesNotExist:
                 pass
 
