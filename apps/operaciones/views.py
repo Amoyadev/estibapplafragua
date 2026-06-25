@@ -1010,8 +1010,9 @@ class RetiroDespacho(CualquierRol, TemplateView):
             .order_by("nombre")
         )
 
-        # Enriquecer con conteo de ETAs y próxima fecha
+        # Enriquecer con conteo de ETAs mensual y diario
         conductores_lista = []
+        primer_dia_mes = hoy.replace(day=1)
         for c in conductores:
             etas_c = ETA.objects.filter(
                 conductor=c
@@ -1023,7 +1024,7 @@ class RetiroDespacho(CualquierRol, TemplateView):
             )
             conductores_lista.append({
                 "conductor": c,
-                "total": etas_c.count(),
+                "mes": etas_c.filter(fecha_retiro__gte=primer_dia_mes).count(),
                 "hoy": etas_c.filter(fecha_retiro=hoy).count(),
                 "patente": patente or "—",
             })

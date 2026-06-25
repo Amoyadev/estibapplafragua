@@ -45,10 +45,12 @@
                                 <i class="bi bi-truck me-1 text-muted"></i>{{ item.patente }}
                             </span>
                             <div class="d-flex gap-1">
-                                <span class="badge" style="background:#2c2c3a;font-size:.7rem;">{{ item.total }}</span>
-                                {% if item.hoy > 0 %}
-                                <span class="badge bg-warning text-dark" style="font-size:.7rem;">Hoy {{ item.hoy }}</span>
-                                {% endif %}
+                                <span class="badge" style="background:#2c2c3a;font-size:.7rem;" title="Este mes">
+                                    <i class="bi bi-calendar3 me-1"></i>{{ item.mes }}
+                                </span>
+                                <span class="badge {% if item.hoy > 0 %}bg-warning text-dark{% else %}bg-light text-muted border{% endif %}" style="font-size:.7rem;" title="Hoy">
+                                    <i class="bi bi-sun me-1"></i>{{ item.hoy }}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -82,10 +84,12 @@
                                 <i class="bi bi-truck me-1 text-muted"></i>{{ item.patente }}
                             </span>
                             <div class="d-flex gap-1">
-                                <span class="badge" style="background:#2c2c3a;font-size:.7rem;">{{ item.total }}</span>
-                                {% if item.hoy > 0 %}
-                                <span class="badge bg-warning text-dark" style="font-size:.7rem;">Hoy {{ item.hoy }}</span>
-                                {% endif %}
+                                <span class="badge" style="background:#2c2c3a;font-size:.7rem;" title="Este mes">
+                                    <i class="bi bi-calendar3 me-1"></i>{{ item.mes }}
+                                </span>
+                                <span class="badge {% if item.hoy > 0 %}bg-warning text-dark{% else %}bg-light text-muted border{% endif %}" style="font-size:.7rem;" title="Hoy">
+                                    <i class="bi bi-sun me-1"></i>{{ item.hoy }}
+                                </span>
                             </div>
                         </div>
                     </div>
