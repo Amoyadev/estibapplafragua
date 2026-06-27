@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% load op_extras %}
+{% block title %}Buscar contenedor — Estibapp{% endblock %}
+{% block content %}
+
+<h3 class="mb-1"><i class="bi bi-search"></i> Buscar contenedor</h3>
+<p class="text-muted">
+    Escribe el N° de contenedor (o parte) para ver <strong>dónde está</strong> y
+    todas sus ETAs relacionadas en el tiempo. También puedes buscar por cliente o N° de ETA.
+</p>
+
+<form method="get" class="mb-4">
+    <div class="input-group input-group-lg" style="max-width:560px;">
+        <span class="input-group-text"><i class="bi bi-box-seam"></i></span>
+        <input type="text" name="q" value="{{ q }}" autofocus
+               class="form-control" placeholder="Ej. TLLU4802823, TATTERSALL, OPS-2026-00010">
+        <button class="btn btn-dark"><i class="bi bi-search"></i> Buscar</button>
+    </div>
+</form>
+
+{% if q %}
+    {% if sin_resultados %}
+        <div class="alert alert-warning">
+            No se encontraron contenedores para «<strong>{{ q }}</strong>».
+        </div>
+    {% else %}
+        <p class="text-muted small">{{ resultados|length }} contenedor{{ resultados|length|pluralize:"es" }} encontrado{{ resultados|length|pluralize:"s" }}.</p>
+
+        {% for r in resultados %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <strong class="font-monospace fs-5"><i class="bi bi-box-seam"></i> {{ r.contenedor.codigo }}</strong>
+                <span class="text-muted small">
+                    {{ r.contenedor.get_tipo_display }} ·
+                    {{ r.total }} ETA{{ r.total|pluralize }} histórica{{ r.total|pluralize:"s" }}
+                </span>
+            </div>
+            <div class="card-body">
+                {% if r.actual %}
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3">
+                        <div class="text-muted small">Estado actual</div>
+                        <span class="badge {{ r.actual.estado|estado_badge }}">{{ r.actual.get_estado_display }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-muted small">Ubicación en patio</div>
+                        <strong>{{ r.actual.ubicacion|default:"— sin registrar —" }}</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-muted small">Depósito</div>
+                        <strong>{{ r.actual.deposito|default:"—" }}</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-muted small">Cliente actual</div>
+                        <strong>{{ r.actual.cliente.nombre }}</strong>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ETA</th><th>Cliente</th><th>Estado</th>
+                                <th>F. retiro</th><th>F. entrega</th><th>Puerto</th>
+                                <th>Ubicación</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for eta in r.etas %}
+                            <tr>
+                                <td class="font-monospace">{{ eta.numero }}</td>
+                                <td>{{ eta.cliente.nombre }}</td>
+                                <td><span class="badge {{ eta.estado|estado_badge }}">{{ eta.get_estado_display }}</span></td>
+                                <td>{{ eta.fecha_retiro|date:"d-m-Y"|default:"—" }}</td>
+                                <td>{{ eta.fecha_entrega|date:"d-m-Y"|default:"—" }}</td>
+                                <td>{{ eta.puerto|default:"—" }}</td>
+                                <td>{{ eta.ubicacion|default:"—" }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'operaciones:eta_detalle' eta.pk %}" class="btn btn-sm btn-outline-secondary">Abrir</a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="8" class="text-muted text-center py-3">Sin ETAs registradas.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% endif %}
+{% else %}
+    <div class="alert alert-light border text-muted">
+        <i class="bi bi-info-circle"></i> Ingresa un término de búsqueda para comenzar.
+    </div>
+{% endif %}
+
+{% endblock %}

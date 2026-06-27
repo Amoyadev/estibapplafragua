@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% load op_extras %}
+{% block title %}ETA {{ eta.numero }} — Estibapp{% endblock %}
+{% block content %}
+
+{# ── Cabecera ── #}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h3 class="mb-1">
+            <i class="bi bi-box-seam me-1"></i>{{ eta.contenedor.codigo }}
+            <small class="text-muted fs-6">({{ eta.contenedor.get_tipo_display }})</small>
+        </h3>
+        <div class="text-muted small">ETA {{ eta.numero }} · {{ eta.cliente.nombre }}</div>
+    </div>
+    <div class="text-end">
+        <div><span class="badge {{ eta.estado|estado_badge }} fs-6">{{ eta.get_estado_display }}</span></div>
+        <div class="mt-1">
+            <span class="badge {{ eta.ubicacion_fisica|ubicacion_badge }}">
+                <i class="bi bi-geo-alt-fill me-1"></i>{{ eta.ubicacion_fisica }}
+            </span>
+        </div>
+    </div>
+</div>
+
+{% if eta.estado == "SOLICITADO" %}
+<div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+    <i class="bi bi-bell-fill me-2"></i>
+    <div><strong>Solicitado por cliente.</strong> Asigna un conductor y camión para avanzar al estado <em>Asignado</em> e iniciar la ida a puerto.</div>
+</div>
+{% elif eta.estado == "ALMACENADO" %}
+<div class="alert alert-secondary d-flex align-items-center mb-3" role="alert" style="border-left:4px solid #6c757d;">
+    <i class="bi bi-archive me-2"></i>
+    <div><strong>Contenedor en patio.</strong> El camión ya no está asignado. Para despachar a cliente o a puerto, selecciona el estado destino y asigna conductor.</div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+
+    {# ══════════════════ IZQUIERDA: Datos ══════════════════ #}
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header fw-semibold">Datos de la solicitud</div>
+            <ul class="list-group list-group-flush small">
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Cliente</span><strong>{{ eta.cliente.nombre }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Agente portuario</span><strong>{{ eta.agente.nombre }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Contenedor</span>
+                    <strong>{{ eta.contenedor.codigo }}
+                        <span class="badge bg-secondary ms-1">{{ eta.contenedor.get_tipo_display }}</span>
+                    </strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Estado contenedor</span>
+                    <strong>{{ eta.contenedor.get_estado_display }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Depósito</span><strong>{{ eta.deposito|default:"—" }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Fecha / hora retiro</span>
+                    <strong>{{ eta.fecha }} {{ eta.hora_retiro|default:"" }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Tipo de proceso</span><strong>{{ eta.get_tipo_proceso_display }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span class="text-muted">Ubicación en patio</span>
+                    <strong>{{ eta.ubicacion|default:"— sin registrar —" }}</strong>
+                </li>
+                {# Camión / Conductor: solo lectura — gris cuando ALMACENADO (camión salió) #}
+                <li class="list-group-item {% if conductor_inactivo %}bg-light{% endif %}">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Camión</span>
+                        <strong class="{% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.camion.patente|default:"— sin asignar —" }}
+                        </strong>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <span class="text-muted">Conductor</span>
+                        <strong class="{% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.conductor.nombre|default:"— sin asignar —" }}
+                        </strong>
+                    </div>
+                    {% if conductor_inactivo %}
+                    <div class="small text-muted mt-1" style="font-size:.75rem;">
+                        <i class="bi bi-info-circle me-1"></i>Contenedor en patio — transporte sin asignación activa.
+                        Asigna conductor al despachar.
+                    </div>
+                    {% endif %}
+                </li>
+            </ul>
+
+            {# ── Acciones generales ── #}
+            {% if user|en_grupo:"Administrador,Coordinador" %}
+            <div class="card-footer d-flex gap-2 flex-wrap bg-white">
+                <a href="{% url 'operaciones:eta_editar' eta.pk %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-pencil-square"></i> Editar datos
+                </a>
+                <a href="https://wa.me/" target="_blank"
+                   class="btn btn-sm" style="background:#25D366; color:#fff; border-color:#1fba57;">
+                    <i class="bi bi-whatsapp"></i> WhatsApp
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+        {# ── Ubicación en patio ── #}
+        {% if user|en_grupo:"Administrador,Encargado de Patio" %}
+        <div class="card">
+            <div class="card-header small fw-semibold">
+                <i class="bi bi-geo-alt me-1"></i>Ubicación en patio
+            </div>
+            <div class="card-body py-2">
+                <form method="post" action="{% url 'operaciones:eta_ubicacion' eta.pk %}" class="d-flex gap-2">
+                    {% csrf_token %}
+                    {{ ubicacion_form.ubicacion }}
+                    <button class="btn btn-outline-primary btn-sm">Guardar</button>
+                </form>
+                <div class="form-text">Registrar cuando el gruero indique la posición por radio.</div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {# ══════════════════ DERECHA: Ciclo del contenedor ══════════════════ #}
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-arrow-repeat me-1"></i>Ciclo del contenedor</span>
+                <span class="badge" style="background:#CC0000;">{{ eta.get_estado_display }}</span>
+            </div>
+            <div class="card-body">
+
+                {# ── Stepper visual ── #}
+                <div class="mb-3">
+                    <div class="d-flex flex-wrap gap-1 align-items-center">
+                        {% for e in estados_flujo %}
+                            <span class="badge small px-2 py-1"
+                                  style="{% if e.actual %}background:#CC0000; color:#fff;{% elif e.pasado %}background:#555; color:#fff;{% else %}background:#e9ecef; color:#777;{% endif %}">
+                                {% if e.pasado %}<i class="bi bi-check2 me-1"></i>{% endif %}
+                                {{ e.label }}
+                            </span>
+                            {% if not forloop.last %}
+                                <i class="bi bi-chevron-right small" style="color:#bbb;"></i>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {# ── Transporte asignado — gris cuando ALMACENADO (camión fuera del depósito) ── #}
+                <div class="border rounded p-3 mb-3 small {% if conductor_inactivo %}opacity-50{% endif %}"
+                     style="background:{% if conductor_inactivo %}#f0f0f0{% else %}#f8f9fa{% endif %};">
+                    <span class="fw-semibold me-3">
+                        <i class="bi bi-truck me-1 text-muted"></i>Transporte:
+                        {% if conductor_inactivo %}
+                        <span class="badge bg-secondary ms-1" style="font-size:.65rem;">sin asignación activa</span>
+                        {% endif %}
+                    </span>
+                    <span class="me-3">
+                        <span class="text-muted">Camión</span>
+                        <strong id="txt-camion" class="ms-1 {% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.camion.patente|default:"— sin asignar —" }}
+                        </strong>
+                    </span>
+                    <span>
+                        <span class="text-muted">Conductor</span>
+                        <strong id="txt-conductor" class="ms-1 {% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.conductor.nombre|default:"— sin asignar —" }}
+                        </strong>
+                    </span>
+                </div>
+
+                {# ── Último movimiento ── #}
+                {% if ultimo_movimiento %}
+                <div class="mb-3 p-2 rounded small" style="background:#fff; border-left:3px solid #CC0000; box-shadow:0 1px 3px rgba(0,0,0,.06);">
+                    <div class="fw-semibold mb-1 text-muted" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.05em;">
+                        Último movimiento
+                    </div>
+                    <div class="d-flex gap-3 flex-wrap">
+                        <span><i class="bi bi-tag me-1"></i><strong>{{ ultimo_movimiento.get_tipo_display }}</strong></span>
+                        <span><i class="bi bi-calendar3 me-1"></i>{{ ultimo_movimiento.fecha|date:"d/m/Y H:i" }}</span>
+                        {% if ultimo_movimiento.empresa_responsable %}
+                        <span><i class="bi bi-building me-1"></i>{{ ultimo_movimiento.empresa_responsable }}</span>
+                        {% endif %}
+                    </div>
+                    {% if ultimo_movimiento.observacion %}
+                    <div class="mt-1 text-muted">{{ ultimo_movimiento.observacion }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {# ── Formulario de avance ── #}
+                {% if pasos_futuros %}
+                <div class="border rounded p-3" style="background:#fafafa;">
+                    <p class="small fw-semibold mb-3" style="color:#CC0000;">
+                        <i class="bi bi-arrow-right-circle-fill me-1"></i>Registrar movimiento
+                    </p>
+
+                    <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}" id="form-avance">
+                        {% csrf_token %}
+
+                        {# ─ Avanzar a (selector de estados futuros con color dinámico) ─ #}
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">
+                                Avanzar a <span class="text-danger">*</span>
+                            </label>
+                            <div class="position-relative">
+                                <select name="siguiente_paso_idx" id="sel-paso"
+                                        class="form-select form-select-sm ps-3"
+                                        style="border-left:4px solid #6c757d; border-radius:.375rem; font-weight:600; transition:border-color .2s;"
+                                        required>
+                                    <option value="">— seleccionar estado destino —</option>
+                                    {% for p in pasos_futuros %}
+                                    <option value="{{ p.idx }}"
+                                            data-retiro="{% if p.es_retiro %}1{% else %}0{% endif %}"
+                                            data-transporte="{% if p.requiere_transporte %}1{% else %}0{% endif %}"
+                                            data-color="{{ p.color|default:'#6c757d' }}"
+                                            {% if forloop.first %}selected{% endif %}>
+                                        {{ p.label }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {# Chip indicador del estado seleccionado #}
+                            <div id="estado-chip" class="mt-1 d-inline-flex align-items-center gap-1 px-2 py-1 rounded small fw-semibold" style="display:none!important;font-size:.72rem;"></div>
+                        </div>
+
+                        {# ─ Estado del contenedor ─ #}
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">
+                                Estado del contenedor <span class="text-danger">*</span>
+                            </label>
+                            <select name="tipo_contenedor" class="form-select form-select-sm" required>
+                                <option value="">— seleccionar —</option>
+                                <option value="VACIO"   {% if eta.contenedor.estado == "VACIO"   %}selected{% endif %}>Vacío</option>
+                                <option value="CARGADO" {% if eta.contenedor.estado == "CARGADO" %}selected{% endif %}>Con carga</option>
+                            </select>
+                        </div>
+
+                        {# ─ Empresa responsable (solo lectura) ─ #}
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">Empresa responsable</label>
+                            <div class="form-control form-control-sm bg-light text-muted" style="pointer-events:none;">
+                                {{ eta.conductor.empresa|default:"— sin empresa asignada —" }}
+                            </div>
+                        </div>
+
+                        {# ─ Camión + Conductor — para pasos que requieren transporte ─ #}
+                        <div id="bloque-retiro" class="mb-2 p-2 rounded" style="background:#fff8e1; border:1px solid #ffc107; display:none;">
+                            <p class="small fw-semibold mb-2">
+                                <i class="bi bi-truck me-1"></i><span id="lbl-transporte">Asignar transporte</span>
+                                <span class="text-danger">*</span>
+                            </p>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Camión</label>
+                                    <select name="camion_mov" id="sel-camion" class="form-select form-select-sm"
+                                            onchange="document.getElementById('txt-camion').textContent = this.options[this.selectedIndex].text || '— sin asignar —'">
+                                        <option value="">— seleccionar —</option>
+                                        {% for c in camiones %}
+                                            <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Conductor</label>
+                                    <select name="conductor_mov" id="sel-conductor" class="form-select form-select-sm"
+                                            onchange="document.getElementById('txt-conductor').textContent = this.options[this.selectedIndex].text.split(' —')[0] || '— sin asignar —'">
+                                        <option value="">— seleccionar —</option>
+                                        <optgroup label="✓ Disponibles">
+                                        {% for item in conductores_info %}{% if item.disponible %}
+                                            <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %}>{{ item.c.nombre }}</option>
+                                        {% endif %}{% endfor %}
+                                        </optgroup>
+                                        <optgroup label="✗ No disponibles ese día">
+                                        {% for item in conductores_info %}{% if not item.disponible %}
+                                            <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %} style="color:#adb5bd;">{{ item.c.nombre }} — {{ item.motivo }}</option>
+                                        {% endif %}{% endfor %}
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {# ─ Fecha ─ #}
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">
+                                Fecha agendada <span class="text-danger">*</span>
+                            </label>
+                            <input type="datetime-local" name="fecha" class="form-control form-control-sm" required>
+                        </div>
+
+                        {# ─ Observación ─ #}
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">
+                                Observación <span class="text-danger">*</span>
+                                <span class="fw-normal text-muted">(mensaje al equipo / conductor)</span>
+                            </label>
+                            <textarea name="observacion" class="form-control form-control-sm" rows="2"
+                                      placeholder="Ej: Retiro programado 09:00 hrs, coordinar con portería…" required></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-sm w-100 fw-semibold text-white"
+                                style="background:#CC0000; border-color:#990000;">
+                            <i class="bi bi-check2-circle me-1"></i>Registrar movimiento y avanzar estado
+                        </button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="alert alert-dark mb-0 py-2 text-center">
+                    <i class="bi bi-flag-fill me-1"></i>
+                    Ciclo cerrado — contenedor devuelto a puerto.
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════ Trazabilidad ══════════════════ #}
+<div class="card mt-3">
+    <div class="card-header fw-semibold">
+        <i class="bi bi-list-check me-1"></i>Trazabilidad / movimientos
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Movimiento</th>
+                    <th>Fecha</th>
+                    <th>Empresa responsable</th>
+                    <th>Observación</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for m in movimientos %}
+                <tr {% if forloop.first %}style="background:#fff5f5;"{% endif %}>
+                    <td><span class="badge bg-secondary">{{ m.get_tipo_display }}</span></td>
+                    <td class="small">{{ m.fecha|date:"d/m/Y H:i" }}</td>
+                    <td class="small">{{ m.empresa_responsable|default:"—" }}</td>
+                    <td class="small">{{ m.observacion }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="4" class="text-muted text-center py-3">
+                        <i class="bi bi-inbox me-1"></i>Sin movimientos registrados.
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const sel        = document.getElementById("sel-paso");
+    const bloque     = document.getElementById("bloque-retiro");
+    const selCamion  = document.getElementById("sel-camion");
+    const selCond    = document.getElementById("sel-conductor");
+    const chip       = document.getElementById("estado-chip");
+
+    const ETIQUETAS = {
+        "Asignado":               { color: "#0dcaf0", icon: "bi-person-check",           bg: "#cff4fc" },
+        "En patio":               { color: "#0d6efd", icon: "bi-box-arrow-in-down",      bg: "#e7f1ff" },
+        "Almacenado en patio":    { color: "#198754", icon: "bi-archive",                bg: "#d1e7dd" },
+        "Despachado a cliente":   { color: "#f59e0b", icon: "bi-box-arrow-right",        bg: "#fff3cd" },
+        "Devuelto a depósito":    { color: "#6f42c1", icon: "bi-box-arrow-in-left",      bg: "#ede9f8" },
+        "Despachado a puerto":    { color: "#CC0000", icon: "bi-ship",                   bg: "#fde8e8" },
+    };
+
+    function actualizarSelector() {
+        if (!sel) return;
+        const opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) {
+            sel.style.borderLeftColor = "#6c757d";
+            if (chip) chip.style.display = "none";
+            return;
+        }
+
+        const color = opt.dataset.color || "#6c757d";
+        sel.style.borderLeftColor = color;
+
+        if (chip) {
+            const info = ETIQUETAS[opt.text.trim()] || { color, icon: "bi-arrow-right-circle", bg: "#f0f0f0" };
+            chip.style.cssText = `display:inline-flex!important; background:${info.bg}; color:${info.color}; border:1px solid ${info.color}40;`;
+            chip.innerHTML = `<i class="bi ${info.icon} me-1"></i>${opt.text.trim()}`;
+        }
+
+        const esTransporte = opt.dataset.transporte === "1";
+        if (bloque) bloque.style.display = esTransporte ? "" : "none";
+        if (selCamion) selCamion.required = esTransporte;
+        if (selCond)   selCond.required   = esTransporte;
+
+        const lblTransporte = document.getElementById("lbl-transporte");
+        if (lblTransporte && esTransporte) {
+            const lbl = opt.text.trim();
+            if (lbl.includes("Asignado"))          lblTransporte.textContent = "Asignar transporte para ida a puerto";
+            else if (lbl.includes("En patio"))     lblTransporte.textContent = "Confirmar transporte — retiro del puerto";
+            else if (lbl.includes("cliente"))      lblTransporte.textContent = "Asignar transporte para despacho a cliente";
+            else if (lbl.includes("puerto"))       lblTransporte.textContent = "Asignar transporte para despacho a puerto";
+            else                                   lblTransporte.textContent = "Asignar transporte";
+        }
+    }
+
+    if (sel) {
+        sel.addEventListener("change", actualizarSelector);
+        actualizarSelector();
+    }
+
+    if (selCamion) selCamion.addEventListener("change", function () {
+        const el = document.getElementById("txt-camion");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text : "— sin asignar —";
+    });
+    if (selCond) selCond.addEventListener("change", function () {
+        const el = document.getElementById("txt-conductor");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
+    });
+})();
+</script>
+{% endblock %}
+;
+    });
+    if (selCond) selCond.addEventListener("change", function () {
+        const el = document.getElementById("txt-conductor");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
+    });
+})();
+</script>
+{% endblock %}

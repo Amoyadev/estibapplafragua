@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load op_extras %}
+{% block title %}Patio — Estibapp{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <div>
+        <h3 class="mb-0">Tablero de patio</h3>
+        <p class="text-muted small mb-0">
+            Registra ubicaciones cuando el gruero las indica por radio.
+            Avanza el estado desde la ficha de cada ETA.
+        </p>
+    </div>
+</div>
+
+{# ── Buscador inline (sin recarga) ── #}
+<div class="mb-3">
+    <div class="input-group input-group-sm" style="max-width:340px;">
+        <span class="input-group-text bg-white" style="border-color:#CC0000;">
+            <i class="bi bi-search" style="color:#CC0000;"></i>
+        </span>
+        <input type="text" id="buscador-patio" class="form-control"
+               placeholder="Filtrar por código de contenedor…"
+               style="border-left:none; border-color:#CC0000 !important;"
+               autocomplete="off">
+        <button class="btn btn-outline-secondary btn-sm" id="btn-limpiar-patio" title="Limpiar">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+    <div class="form-text mt-1" id="txt-conteo"></div>
+</div>
+
+<div class="row g-3" id="grid-patio">
+{% for eta in etas %}
+    <div class="col-md-6 col-lg-4 card-patio-wrapper"
+         data-codigo="{{ eta.contenedor.codigo|lower }}">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>
+                    <i class="bi bi-box-seam me-1"></i>{{ eta.contenedor.codigo }}
+                </strong>
+                <span class="badge {{ eta.estado|estado_badge }}">{{ eta.get_estado_display }}</span>
+            </div>
+            <div class="card-body">
+                <div class="small mb-2 d-flex gap-3 flex-wrap text-muted">
+                    <span><strong>{{ eta.contenedor.get_tipo_display }}</strong></span>
+                    <span>· {{ eta.contenedor.get_estado_display }}</span>
+                </div>
+
+                <ul class="list-unstyled small mb-2">
+                    <li><span class="text-muted">ETA:</span> <strong>{{ eta.numero }}</strong></li>
+                    <li><span class="text-muted">Cliente:</span> {{ eta.cliente.nombre }}</li>
+                    <li><span class="text-muted">Conductor:</span> {{ eta.conductor|default:"—" }}</li>
+                    <li><span class="text-muted">Camión:</span> {{ eta.camion.patente|default:"—" }}</li>
+                </ul>
+
+                <div class="mb-2">
+                    <span class="text-muted small">Ubicación en patio:</span>
+                    <strong class="d-block">{{ eta.ubicacion|default:"— sin registrar —" }}</strong>
+                </div>
+
+                {# Formulario ubicación #}
+                <form method="post" action="{% url 'operaciones:eta_ubicacion' eta.pk %}" class="d-flex gap-2 mb-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'operaciones:patio' %}">
+                    <input type="text" name="ubicacion" value="{{ eta.ubicacion }}"
+                           class="form-control form-control-sm"
+                           placeholder="Calle · Piso · Nivel">
+                    <button class="btn btn-sm btn-primary">Ubicar</button>
+                </form>
+
+                <a href="{% url 'operaciones:eta_detalle' eta.pk %}"
+                   class="btn btn-sm btn-outline-secondary w-100">
+                    <i class="bi bi-arrow-right-circle me-1"></i>Abrir ETA y registrar movimiento
+                </a>
+            </div>
+        </div>
+    </div>
+{% empty %}
+    <div class="col-12">
+        <div class="alert alert-light text-center">
+            <i class="bi bi-inbox me-1"></i>No hay contenedores en patio actualmente.
+        </div>
+    </div>
+{% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var input   = document.getElementById('buscador-patio');
+    var btnX    = document.getElementById('btn-limpiar-patio');
+    var txtCont = document.getElementById('txt-conteo');
+    var cards   = Array.from(document.querySelectorAll('.card-patio-wrapper'));
+
+    function filtrar() {
+        var q = input.value.trim().toLowerCase();
+        var visibles = 0;
+        cards.forEach(function (c) {
+            var match = !q || c.dataset.codigo.includes(q);
+            c.style.display = match ? '' : 'none';
+            if (match) visibles++;
+        });
+        txtCont.textContent = q
+            ? visibles + ' de ' + cards.length + ' contenedor(es) mostrado(s)'
+            : '';
+    }
+
+    input.addEventListener('input', filtrar);
+    btnX.addEventListener('click', function () {
+        input.value = '';
+        filtrar();
+        input.focus();
+    });
+})();
+</script>
+{% endblock %}

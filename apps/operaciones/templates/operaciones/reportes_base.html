@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% comment %}
+Layout reutilizable de la sección Reportes (patrón vista/controlador).
+Provee una sub-barra lateral con:
+  - acceso a la vista principal de gráficos (dato principal),
+  - listado de clientes existentes en base, con su carga en depósito.
+Las vistas hijas solo rellenan {% block reporte_content %}.
+Contexto esperado: clientes_sidebar (queryset de Cliente anotado con
+n_total y n_deposito) y, opcionalmente, cliente (el seleccionado).
+{% endcomment %}
+{% block title %}Reportes — Estibapp{% endblock %}
+{% block content %}
+<div class="row g-3">
+    <!-- Sub-sidebar de reportes -->
+    <div class="col-lg-3">
+        <div class="card shadow-sm">
+            <div class="list-group list-group-flush">
+                <a href="{% url 'operaciones:reportes' %}"
+                   class="list-group-item list-group-item-action d-flex align-items-center gap-2 {% if not cliente %}active{% endif %}">
+                    <i class="bi bi-bar-chart-line"></i> Gráficos
+                </a>
+            </div>
+            <div class="card-header bg-light py-2 small fw-semibold text-uppercase text-muted">
+                Clientes
+            </div>
+            <div class="list-group list-group-flush" style="max-height:70vh; overflow:auto;">
+                {% for c in clientes_sidebar %}
+                    <a href="{% url 'operaciones:reporte_cliente' c.pk %}"
+                       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {% if cliente and cliente.pk == c.pk %}active{% endif %}">
+                        <span class="text-truncate" style="max-width:11rem;" title="{{ c.nombre }}">{{ c.nombre }}</span>
+                        <span class="badge bg-primary rounded-pill" title="En depósito">{{ c.n_deposito }}</span>
+                    </a>
+                {% empty %}
+                    <div class="list-group-item text-muted small">Sin clientes con ETAs.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Cuerpo del reporte -->
+    <div class="col-lg-9">
+        {% block reporte_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}
