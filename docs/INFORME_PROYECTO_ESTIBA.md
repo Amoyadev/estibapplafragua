@@ -10,11 +10,13 @@
 | Campo | Valor |
 | --- | --- |
 | **Nombre** | Estibapp |
-| **Versión** | 0.1 (MVP 1) |
+| **Versión** | 1.0 (producción estable) |
 | **Autor** | Alfredo Moya |
 | **Rubro** | Logística portuaria / Depósito de contenedores (container depot) |
-| **Stack** | Django · PostgreSQL · Nginx · Docker |
-| **Estado** | En definición / Scaffold base |
+| **Stack** | Django 5.1.5 · PostgreSQL 16 · Nginx · Docker · Bootstrap 5.3.3 |
+| **Estado** | Producción operativa — revisión con stakeholder completada |
+| **URL producción** | https://estibapplafragua.cl |
+| **Servidor** | DigitalOcean Droplet · IP 209.97.149.174 |
 
 ---
 
@@ -381,9 +383,19 @@ flowchart LR
 - Reportes (retiro, almacenados, entregas) y exportación CSV.
 - Avisos al cliente en hitos (email a consola en MVP).
 
-### ⏸️ Sprint 5 — Hardening, Backups y K6 *(post-montaje)*
-**Objetivo MVP:** sistema seguro, respaldado y certificado en carga.
-*Se ejecuta una vez la app esté montada en el servidor (DigitalOcean / Seenode).*
+### ✅ Sprint 5 — Disponibilidad, UX de flujo y producción *(entregado — 27/06/2026)*
+**Objetivo:** conductores con disponibilidad real + ciclo ETA refinado + despliegue en producción.
+- Modelo `DiaLibre`: registro de días no laborables por conductor.
+- Vista mantenedor de conductores con strip de calendario semanal (disponible / día libre / en operación).
+- Selector de conductores en formulario ETA dividido en grupos *Disponibles* / *No disponibles ese día*.
+- Ciclo ETA: eliminación de "En patio" como opción seleccionable (el backend lo atraviesa automáticamente). "Devuelto a depósito" solo aparece tras `DESPACHADO_CLIENTE`.
+- Picker de fecha/hora personalizado con flechas ▲▼ y minutos en intervalos 00/30 (reemplaza `datetime-local` nativo).
+- Deploy en DigitalOcean Droplet con dominio https://estibapplafragua.cl.
+- Revisión y aprobación con stakeholder. **Tag `v1.0-estable` creado en `main`.**
+- Estrategia de ramas: `develop` para trabajo activo, `main` solo para merges aprobados.
+
+### ⏸️ Sprint 6 — Hardening, Backups y K6 *(pendiente)*
+**Objetivo:** sistema seguro, respaldado y certificado en carga.
 - HTTPS (Let's Encrypt), **2FA admin/personal**, backups automáticos, auditoría.
 - Pruebas de carga K6 (5/10 usuarios, p95 < 500 ms).
 - Modo contingencia local + CSV (PoC).
@@ -469,6 +481,83 @@ ajustes de datos/proceso del stakeholder son **edición de catálogos y listas**
 
 ---
 
-## 13. Conclusión
+---
+
+## 13. Control de versiones y puntos estables de producción
+
+### 13.1 Estrategia de ramas
+
+A partir de la versión 1.0 se adopta la siguiente estrategia:
+
+- **`main`**: solo recibe merges desde `develop` cuando el código está probado y aprobado. Es el código que corre en producción.
+- **`develop`**: rama de trabajo activa. Todo desarrollo nuevo va aquí primero.
+- **Tags**: cada merge a `main` aprobado por el stakeholder se etiqueta con una versión.
+
+**Flujo:**
+```
+feature → develop → (QA + aprobación) → merge a main → tag
+```
+
+Para volver al último punto estable en el servidor:
+```bash
+cd /opt/estiba-app
+git fetch origin
+git checkout main
+git reset --hard v1.0-estable
+docker-compose up -d --no-build
+```
+
+### 13.2 Historial de versiones
+
+| Tag | Commit | Fecha | Descripción |
+|-----|--------|-------|-------------|
+| `v1.0-estable` | `608a263` | 27/06/2026 | Punto estable previo a rama develop. MVP completo, revisado por stakeholder. |
+| — | `7c65232` (develop) | 27/06/2026 | Fix: excluir "En patio" y "Devuelto a depósito" de `pasos_futuros` + pre-llenado fecha form ETA. |
+| — | `6aeb943` (develop) | 27/06/2026 | Feat: picker fecha/hora con flechas ▲▼ y minutos 00/30. |
+| — | `merged → main` | 27/06/2026 | Merge develop → main (picker + fix flujo estados). |
+
+---
+
+## 14. Registro de bugs críticos resueltos
+
+> Historial de errores graves encontrados en producción y sus correcciones. Útil para el equipo técnico y para evitar regresiones.
+
+### BUG-01 — TemplateSyntaxError: "Unclosed block tag" en `eta_detalle.html`
+- **Síntoma:** Todas las URLs `/app/etas/xxx/` retornaban 500 con `TemplateSyntaxError`.
+- **Causa:** Archivo `eta_detalle.html` truncado — faltaba la sección de Trazabilidad y el `{% endblock %}` del bloque `content`.
+- **Fix:** Append del contenido faltante vía bash. Commit restaurado.
+- **Lección:** Nunca editar templates con `cat >>` en bash WSL; usar solo el editor (Edit tool / VS Code).
+
+### BUG-02 — Commit catastrófico: 109 archivos "eliminados" de git
+- **Síntoma:** `git status` mostraba 109 archivos deleted; el servidor quedó sin `docker-compose.yml`.
+- **Causa raíz:** Índice git de WSL corrompido tras un `index.lock` de emergencia. Al hacer `git add <archivo_específico>`, el índice solo registraba ese archivo y el commit resultante "borraba" todo lo demás respecto a HEAD.
+- **Fix de emergencia:** `git add -A && git commit && git push -f origin main` para restaurar todos los archivos.
+- **Fix permanente del índice:** `rm .git/index && git read-tree HEAD` (reconstruye el índice desde HEAD limpiamente).
+- **Regla vigente:** Siempre usar `git add -A` desde WSL para este repo. Nunca `git add <archivo_específico>`.
+- **Lección para deploy:** Ante historial divergente en el servidor, usar `git fetch && git reset --hard origin/main` en vez de `git pull`.
+
+### BUG-03 — SyntaxError en `models.py`: `unmatched ')'`
+- **Síntoma:** Django no arrancaba; `docker-compose logs` mostraba `SyntaxError: unmatched ')'` en línea 468.
+- **Causa:** Append anterior con `cat >>` había dejado basura (`dor)`) y un bloque `ESTADOS_CIERRE` duplicado.
+- **Fix:** Edit tool para eliminar las líneas con basura. Verificado con `ast.parse()` antes de commitear.
+
+### BUG-04 — TemplateSyntaxError: "Invalid block tag 'endblock'" en línea 437
+- **Síntoma:** Misma 500 en todas las ETAs tras deploy de corrección.
+- **Causa:** El template tenía un `{% endblock %}` duplicado con código JS basura entre ambos (residuo de un `cat >>` previo).
+- **Fix:** Edit tool para eliminar líneas 429-437 (el bloque duplicado). Solo quedó el `{% endblock %}` correcto.
+
+### BUG-05 — Formulario ETA no hacía submit ("no pasó el click")
+- **Síntoma:** Al hacer clic en "Registrar movimiento y avanzar estado", el botón no respondía visiblemente.
+- **Causa:** El campo `fecha` (tipo `datetime-local`, required) estaba vacío. La validación del navegador bloqueaba el submit sin mostrar error visible en mobile.
+- **Fix:** Reemplazar el `datetime-local` nativo por un picker personalizado con input `date` + flechas ▲▼ para hora/minutos (00/30). La fecha se pre-llena con la hora actual al cargar la página.
+
+### BUG-06 — "Devuelto a depósito" aparecía en estado ALMACENADO
+- **Síntoma:** En una ETA en estado ALMACENADO (sin haber despachado al cliente), el selector mostraba la opción "Devuelto a depósito", que no tiene sentido en ese punto del ciclo.
+- **Causa:** `pasos_futuros` en la vista incluía todos los pasos con `idx > actual_idx`, sin filtrar por contexto de negocio.
+- **Fix:** Filtro en `views.py` → `pasos_futuros`: excluir idx 5 (Devuelto) si `ya_despachado_a_cliente()` retorna False. También se excluyó "En patio" (RETIRO) de todas las opciones, ya que el backend lo atraviesa automáticamente via `while` loop.
+
+---
+
+## 15. Conclusión
 
 **Estibapp** transforma la operación de un depósito portuario basada en planillas en una plataforma trazable, con pantallas por perfil y arquitectura moderna (**Django · PostgreSQL · Docker · Nginx**), enfocada en simplicidad operativa y crecimiento hacia el dimensionamiento de espacios en Fase 2.
