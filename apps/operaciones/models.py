@@ -465,9 +465,4 @@ ESTADOS_EN_PUERTO = [ETA.EstadoCiclo.SOLICITADO, ETA.EstadoCiclo.ASIGNADO]
 
 # Estados que representan cierre del ciclo (salida definitiva del depósito).
 ESTADOS_CIERRE = [ETA.EstadoCiclo.DESPACHADO_CLIENTE, ETA.EstadoCiclo.DESPACHADO_PUERTO]
-dor)
-ESTADOS_CIERRE = [
-    ETA.EstadoCiclo.DESPACHADO_CLIENTE,
-    ETA.EstadoCiclo.DESPACHADO_PUERTO,
-]
 
