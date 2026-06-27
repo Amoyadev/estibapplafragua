@@ -140,20 +140,26 @@ def _fetch_graph():
 # ── Vistas ────────────────────────────────────────────────────────────────────
 
 def bandeja_correos(request):
+    from django.core.paginator import Paginator
     if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
         return redirect("login")
 
     estado_filtro = request.GET.get("estado", "")
-    qs = CorreoETA.objects.all()
+    qs = CorreoETA.objects.all().order_by("-fecha_correo")
     if estado_filtro:
         qs = qs.filter(estado=estado_filtro)
 
-    correos    = qs[:100]
+    paginator  = Paginator(qs, 20)
+    page_num   = request.GET.get("page", 1)
+    page_obj   = paginator.get_page(page_num)
     total      = CorreoETA.objects.count()
     pendientes = CorreoETA.objects.filter(estado=CorreoETA.Estado.PENDIENTE).count()
 
     return render(request, "comunicaciones/bandeja_correos.html", {
-        "correos":        correos,
+        "correos":        page_obj,
+        "page_obj":       page_obj,
+        "is_paginated":   page_obj.has_other_pages(),
+        "paginator":      paginator,
         "total":          total,
         "pendientes":     pendientes,
         "estado_filtro":  estado_filtro,

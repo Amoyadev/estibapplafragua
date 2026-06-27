@@ -136,6 +136,7 @@ class DashboardView(CualquierRol, ListView):
 # ============================================================
 class BaseCatalogoList(AdminOCoordinador, ListView):
     template_name = "operaciones/catalogo_lista.html"
+    paginate_by = 20
     columnas: list = []
     titulo = ""
     crear_url = ""
@@ -288,39 +289,87 @@ class ConductorDetalle(AdminOCoordinador, DetailView):
             .select_related("cliente", "contenedor", "camion")
             .order_by("fecha_retiro", "hora_retiro")[:20]
         )
-        # Días libres futuros registrados
-        dias_libres = DiaLibre.objects.filter(conductor=conductor, fecha__gte=hoy).order_by("fecha")
 
-        ctx["dias_strip"] = dias
-        ctx["etas_proximas"] = etas_proximas
-        ctx["dias_libres"] = dias_libres
-        ctx["hoy"] = hoy
+        # Días libres — filtro por mes (GET ?mes=YYYY-MM)
+        mes_str = self.request.GET.get("mes", "")
+        try:
+            import calendar as _cal
+            anio, mes_num = int(mes_str[:4]), int(mes_str[5:7])
+            from datetime import date as _d
+            mes_inicio = _d(anio, mes_num, 1)
+            mes_fin    = _d(anio, mes_num, _cal.monthrange(anio, mes_num)[1])
+        except Exception:
+            # Default: mes actual
+            mes_inicio = hoy.replace(day=1)
+            import calendar as _cal
+            mes_fin = hoy.replace(day=_cal.monthrange(hoy.year, hoy.month)[1])
+            anio, mes_num = hoy.year, hoy.month
+
+        dias_libres = DiaLibre.objects.filter(
+            conductor=conductor, fecha__gte=mes_inicio, fecha__lte=mes_fin
+        ).order_by("fecha")
+
+        # Meses disponibles para el filtro (todos los que tienen días libres)
+        meses_con_datos = (
+            DiaLibre.objects.filter(conductor=conductor)
+            .dates("fecha", "month", order="DESC")
+        )
+
+        ctx["dias_strip"]      = dias
+        ctx["etas_proximas"]   = etas_proximas
+        ctx["dias_libres"]     = dias_libres
+        ctx["hoy"]             = hoy
+        ctx["mes_actual"]      = f"{anio}-{mes_num:02d}"
+        ctx["mes_inicio"]      = mes_inicio
+        ctx["meses_con_datos"] = meses_con_datos
         return ctx
 
 
 def conductor_toggle_dia_libre(request, pk):
-    """Toggle: marca o desmarca un día libre para el conductor. POST only."""
-    from datetime import date as date_cls
+    """Marca días libres (un día o rango) o desmarca si ya existen. POST only."""
+    from datetime import date as date_cls, timedelta as _td
     if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
         return redirect("login")
     conductor = get_object_or_404(Conductor, pk=pk)
     if request.method == "POST":
-        fecha_str = request.POST.get("fecha", "").strip()
-        motivo = request.POST.get("motivo", "").strip()
-        try:
-            fecha = date_cls.fromisoformat(fecha_str)
-        except (ValueError, TypeError):
-            messages.error(request, "Fecha inválida.")
-            return redirect("operaciones:conductor_detalle", pk=pk)
-        obj, created = DiaLibre.objects.get_or_create(
-            conductor=conductor, fecha=fecha,
-            defaults={"motivo": motivo},
-        )
-        if not created:
-            obj.delete()
-            messages.success(request, f"Día libre del {fecha.strftime('%d/%m/%Y')} eliminado.")
+        accion  = request.POST.get("accion", "agregar")   # "agregar" | "eliminar"
+        motivo  = request.POST.get("motivo", "").strip()
+        es_rango = request.POST.get("es_rango") == "1"
+
+        if es_rango:
+            desde_str = request.POST.get("fecha_desde", "").strip()
+            hasta_str = request.POST.get("fecha_hasta", "").strip()
+            try:
+                desde = date_cls.fromisoformat(desde_str)
+                hasta = date_cls.fromisoformat(hasta_str)
+            except (ValueError, TypeError):
+                messages.error(request, "Fechas inválidas.")
+                return redirect("operaciones:conductor_detalle", pk=pk)
+            if hasta < desde:
+                messages.error(request, "La fecha 'hasta' debe ser igual o posterior a 'desde'.")
+                return redirect("operaciones:conductor_detalle", pk=pk)
+            fechas = [desde + _td(days=i) for i in range((hasta - desde).days + 1)]
         else:
-            messages.success(request, f"Día libre registrado para el {fecha.strftime('%d/%m/%Y')}.")
+            fecha_str = request.POST.get("fecha", "").strip()
+            try:
+                fechas = [date_cls.fromisoformat(fecha_str)]
+            except (ValueError, TypeError):
+                messages.error(request, "Fecha inválida.")
+                return redirect("operaciones:conductor_detalle", pk=pk)
+
+        if accion == "eliminar":
+            deleted = DiaLibre.objects.filter(conductor=conductor, fecha__in=fechas).delete()[0]
+            messages.success(request, f"{deleted} día(s) libre(s) eliminado(s).")
+        else:
+            creados = 0
+            for fecha in fechas:
+                _, created = DiaLibre.objects.get_or_create(
+                    conductor=conductor, fecha=fecha,
+                    defaults={"motivo": motivo},
+                )
+                if created:
+                    creados += 1
+            messages.success(request, f"{creados} día(s) libre(s) registrado(s).")
     return redirect("operaciones:conductor_detalle", pk=pk)
 
 
@@ -497,17 +546,19 @@ def _avanzar_eta(eta, usuario):
 
 
 class ETAList(CualquierRol, ListView):
-    """Vista máster: todas las ETAs con filtros (Administrador y roles)."""
+    """Vista máster: todas las ETAs con filtros por estado, texto y mes."""
 
     model = ETA
     template_name = "operaciones/eta_lista.html"
     context_object_name = "etas"
-    paginate_by = 25
+    paginate_by = 20
 
     def get_queryset(self):
         qs = ETA.objects.select_related("cliente", "agente", "contenedor")
         estado = self.request.GET.get("estado")
         buscar = self.request.GET.get("q")
+        mes    = self.request.GET.get("mes")   # "YYYY-MM"
+
         if estado:
             qs = qs.filter(estado=estado)
         if buscar:
@@ -516,13 +567,31 @@ class ETAList(CualquierRol, ListView):
                 | Q(cliente__nombre__icontains=buscar)
                 | Q(contenedor__codigo__icontains=buscar)
             )
-        return qs
+        if mes:
+            try:
+                anio, mes_num = int(mes[:4]), int(mes[5:7])
+                qs = qs.filter(fecha__year=anio, fecha__month=mes_num)
+            except (ValueError, TypeError, IndexError):
+                pass
+        else:
+            # Por defecto: mes actual
+            hoy = timezone.now().date()
+            qs = qs.filter(fecha__year=hoy.year, fecha__month=hoy.month)
+
+        return qs.order_by("-fecha", "-creado")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["estados"] = ETA.EstadoCiclo.choices
+        hoy = timezone.now().date()
+        mes_sel = self.request.GET.get("mes", f"{hoy.year}-{hoy.month:02d}")
+        ctx["estados"]   = ETA.EstadoCiclo.choices
         ctx["estado_sel"] = self.request.GET.get("estado", "")
-        ctx["q"] = self.request.GET.get("q", "")
+        ctx["q"]         = self.request.GET.get("q", "")
+        ctx["mes_sel"]   = mes_sel
+        # Meses disponibles (para el dropdown)
+        ctx["meses_disponibles"] = (
+            ETA.objects.dates("fecha", "month", order="DESC")
+        )
         return ctx
 
 
@@ -821,11 +890,12 @@ class BandejaCoordinador(AdminOCoordinador, ListView):
     model = ETA
     template_name = "operaciones/bandeja.html"
     context_object_name = "etas"
+    paginate_by = 20
 
     def get_queryset(self):
         return ETA.objects.filter(
             estado__in=[ETA.EstadoCiclo.SOLICITADO, ETA.EstadoCiclo.ASIGNADO]
-        ).select_related("cliente", "contenedor")
+        ).select_related("cliente", "contenedor").order_by("-creado")
 
 
 class TableroPatio(AdminOPatio, ListView):
