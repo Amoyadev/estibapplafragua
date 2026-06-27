@@ -25,7 +25,12 @@
 {% if eta.estado == "SOLICITADO" %}
 <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
     <i class="bi bi-bell-fill me-2"></i>
-    <div><strong>Solicitado por cliente.</strong> Completa los datos y asigna transporte para avanzar el ciclo.</div>
+    <div><strong>Solicitado por cliente.</strong> Asigna un conductor y camión para avanzar al estado <em>Asignado</em> e iniciar la ida a puerto.</div>
+</div>
+{% elif eta.estado == "ALMACENADO" %}
+<div class="alert alert-secondary d-flex align-items-center mb-3" role="alert" style="border-left:4px solid #6c757d;">
+    <i class="bi bi-archive me-2"></i>
+    <div><strong>Contenedor en patio.</strong> El camión ya no está asignado. Para despachar a cliente o a puerto, selecciona el estado destino y asigna conductor.</div>
 </div>
 {% endif %}
 
@@ -66,16 +71,26 @@
                     <span class="text-muted">Ubicación en patio</span>
                     <strong>{{ eta.ubicacion|default:"— sin registrar —" }}</strong>
                 </li>
-                {# Camión / Conductor: solo lectura — muestra el último registrado #}
-                <li class="list-group-item">
+                {# Camión / Conductor: solo lectura — gris cuando ALMACENADO (camión salió) #}
+                <li class="list-group-item {% if conductor_inactivo %}bg-light{% endif %}">
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">Camión</span>
-                        <strong>{{ eta.camion.patente|default:"— sin asignar —" }}</strong>
+                        <strong class="{% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.camion.patente|default:"— sin asignar —" }}
+                        </strong>
                     </div>
                     <div class="d-flex justify-content-between mt-1">
                         <span class="text-muted">Conductor</span>
-                        <strong>{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong>
+                        <strong class="{% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.conductor.nombre|default:"— sin asignar —" }}
+                        </strong>
                     </div>
+                    {% if conductor_inactivo %}
+                    <div class="small text-muted mt-1" style="font-size:.75rem;">
+                        <i class="bi bi-info-circle me-1"></i>Contenedor en patio — transporte sin asignación activa.
+                        Asigna conductor al despachar.
+                    </div>
+                    {% endif %}
                 </li>
             </ul>
 
@@ -136,18 +151,26 @@
                     </div>
                 </div>
 
-                {# ── Transporte asignado — solo display, editable dentro del form de movimiento ── #}
-                <div class="border rounded p-3 mb-3 small" style="background:#f8f9fa;">
+                {# ── Transporte asignado — gris cuando ALMACENADO (camión fuera del depósito) ── #}
+                <div class="border rounded p-3 mb-3 small {% if conductor_inactivo %}opacity-50{% endif %}"
+                     style="background:{% if conductor_inactivo %}#f0f0f0{% else %}#f8f9fa{% endif %};">
                     <span class="fw-semibold me-3">
                         <i class="bi bi-truck me-1 text-muted"></i>Transporte:
+                        {% if conductor_inactivo %}
+                        <span class="badge bg-secondary ms-1" style="font-size:.65rem;">sin asignación activa</span>
+                        {% endif %}
                     </span>
                     <span class="me-3">
                         <span class="text-muted">Camión</span>
-                        <strong id="txt-camion" class="ms-1">{{ eta.camion.patente|default:"— sin asignar —" }}</strong>
+                        <strong id="txt-camion" class="ms-1 {% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.camion.patente|default:"— sin asignar —" }}
+                        </strong>
                     </span>
                     <span>
                         <span class="text-muted">Conductor</span>
-                        <strong id="txt-conductor" class="ms-1">{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong>
+                        <strong id="txt-conductor" class="ms-1 {% if conductor_inactivo %}text-muted{% endif %}">
+                            {{ eta.conductor.nombre|default:"— sin asignar —" }}
+                        </strong>
                     </span>
                 </div>
 
@@ -194,6 +217,7 @@
                                     {% for p in pasos_futuros %}
                                     <option value="{{ p.idx }}"
                                             data-retiro="{% if p.es_retiro %}1{% else %}0{% endif %}"
+                                            data-transporte="{% if p.requiere_transporte %}1{% else %}0{% endif %}"
                                             data-color="{{ p.color|default:'#6c757d' }}"
                                             {% if forloop.first %}selected{% endif %}>
                                         {{ p.label }}
@@ -225,10 +249,10 @@
                             </div>
                         </div>
 
-                        {# ─ Camión + Conductor — solo si el estado destino es RETIRO ─ #}
+                        {# ─ Camión + Conductor — para pasos que requieren transporte ─ #}
                         <div id="bloque-retiro" class="mb-2 p-2 rounded" style="background:#fff8e1; border:1px solid #ffc107; display:none;">
                             <p class="small fw-semibold mb-2">
-                                <i class="bi bi-truck me-1"></i>Asignar transporte para ida a puerto
+                                <i class="bi bi-truck me-1"></i><span id="lbl-transporte">Asignar transporte</span>
                                 <span class="text-danger">*</span>
                             </p>
                             <div class="row g-2">
@@ -301,98 +325,3 @@
 {# ══════════════════ Trazabilidad ══════════════════ #}
 <div class="card mt-3">
     <div class="card-header fw-semibold">
-        <i class="bi bi-list-check me-1"></i>Trazabilidad / movimientos
-    </div>
-    <div class="table-responsive">
-        <table class="table table-sm mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Movimiento</th>
-                    <th>Fecha</th>
-                    <th>Empresa responsable</th>
-                    <th>Observación</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for m in movimientos %}
-                <tr {% if forloop.first %}style="background:#fff5f5;"{% endif %}>
-                    <td><span class="badge bg-secondary">{{ m.get_tipo_display }}</span></td>
-                    <td class="small">{{ m.fecha|date:"d/m/Y H:i" }}</td>
-                    <td class="small">{{ m.empresa_responsable|default:"—" }}</td>
-                    <td class="small">{{ m.observacion }}</td>
-                </tr>
-            {% empty %}
-                <tr>
-                    <td colspan="4" class="text-muted text-center py-3">
-                        <i class="bi bi-inbox me-1"></i>Sin movimientos registrados.
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-(function () {
-    const sel        = document.getElementById("sel-paso");
-    const bloque     = document.getElementById("bloque-retiro");
-    const selCamion  = document.getElementById("sel-camion");
-    const selCond    = document.getElementById("sel-conductor");
-    const chip       = document.getElementById("estado-chip");
-
-    // ── Paleta de colores por estado (coincide con views.py _COLOR_PASO) ──
-    const ETIQUETAS = {
-        "En patio":               { color: "#0d6efd", icon: "bi-box-arrow-in-down",     bg: "#e7f1ff" },
-        "Almacenado":             { color: "#198754", icon: "bi-archive",                bg: "#d1e7dd" },
-        "Despachado a cliente":   { color: "#f59e0b", icon: "bi-box-arrow-right",        bg: "#fff3cd" },
-        "Devuelto a depósito":    { color: "#6f42c1", icon: "bi-box-arrow-in-left",      bg: "#ede9f8" },
-        "Despachado a puerto":    { color: "#CC0000", icon: "bi-ship",                   bg: "#fde8e8" },
-    };
-
-    function actualizarSelector() {
-        if (!sel) return;
-        const opt   = sel.options[sel.selectedIndex];
-        if (!opt || !opt.value) {
-            sel.style.borderLeftColor = "#6c757d";
-            if (chip) chip.style.display = "none";
-            return;
-        }
-
-        // Color del borde del select
-        const color = opt.dataset.color || "#6c757d";
-        sel.style.borderLeftColor = color;
-
-        // Chip indicador
-        if (chip) {
-            const info = ETIQUETAS[opt.text.trim()] || { color, icon: "bi-arrow-right-circle", bg: "#f0f0f0" };
-            chip.style.cssText = `display:inline-flex!important; background:${info.bg}; color:${info.color}; border:1px solid ${info.color}40;`;
-            chip.innerHTML = `<i class="bi ${info.icon} me-1"></i>${opt.text.trim()}`;
-        }
-
-        // Mostrar/ocultar bloque de retiro
-        const esRetiro = opt.dataset.retiro === "1";
-        if (bloque) bloque.style.display = esRetiro ? "" : "none";
-        if (selCamion)  selCamion.required  = esRetiro;
-        if (selCond)    selCond.required     = esRetiro;
-    }
-
-    if (sel) {
-        sel.addEventListener("change", actualizarSelector);
-        actualizarSelector();   // inicializar con el valor pre-seleccionado
-    }
-
-    // Sincronizar nombres en el display "Transporte" al cambiar camión/conductor
-    if (selCamion) selCamion.addEventListener("change", function () {
-        const el = document.getElementById("txt-camion");
-        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text : "— sin asignar —";
-    });
-    if (selCond) selCond.addEventListener("change", function () {
-        const el = document.getElementById("txt-conductor");
-        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
-    });
-})();
-</script>
-{% endblock %}

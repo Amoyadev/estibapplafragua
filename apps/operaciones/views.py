@@ -668,11 +668,14 @@ class ETADetail(CualquierRol, DetailView):
                 "idx": p["idx"],
                 "label": p["label"],
                 "es_retiro": FLUJO_PASOS[p["idx"]].get("mov") == Movimiento.Tipo.RETIRO,
+                "requiere_transporte": FLUJO_PASOS[p["idx"]].get("requiere_transporte", False),
                 "color": _COLOR_PASO.get(FLUJO_PASOS[p["idx"]]["estado"], "#6c757d"),
             }
             for p in estados_flujo
             if p["futuro"]
         ]
+        # Conductor "inactivo": ETA en patio pero camión ya salió del depósito
+        ctx["conductor_inactivo"] = self.object.estado == ETA.EstadoCiclo.ALMACENADO
         return ctx
 
 
@@ -773,11 +776,11 @@ def eta_movimiento_manual(request, pk):
     paso_destino = FLUJO_PASOS[siguiente_idx]
     tipo_mov     = paso_destino.get("mov")
 
-    if tipo_mov == Movimiento.Tipo.RETIRO:
+    if paso_destino.get("requiere_transporte", False):
         camion_id    = request.POST.get("camion_mov", "").strip()
         conductor_id = request.POST.get("conductor_mov", "").strip()
         if not camion_id or not conductor_id:
-            messages.error(request, "Para Ida a puerto debes asignar camión y conductor.")
+            messages.error(request, "Este paso requiere asignar camión y conductor.")
             return redirect("operaciones:eta_detalle", pk=pk)
         try:
             eta.camion    = Camion.objects.get(pk=camion_id)
@@ -1538,12 +1541,4 @@ def exportar_csv(request, tipo):
         writer.writerow([
             e.numero,
             e.cliente.nombre,
-            e.agente.nombre,
-            e.contenedor.codigo,
-            e.conductor.nombre if e.conductor else "",
-            e.camion.patente if e.camion else "",
-            e.deposito,
-            e.fecha.isoformat(),
-            e.get_estado_display(),
-        ])
-    r
+      
