@@ -18,6 +18,8 @@ urlpatterns = [
     path("conductores/nuevo/", views.ConductorCreate.as_view(), name="conductor_crear"),
     path("conductores/<int:pk>/editar/", views.ConductorUpdate.as_view(), name="conductor_editar"),
     path("conductores/<int:pk>/eliminar/", views.ConductorDelete.as_view(), name="conductor_eliminar"),
+    path("conductores/<int:pk>/detalle/", views.ConductorDetalle.as_view(), name="conductor_detalle"),
+    path("conductores/<int:pk>/dia-libre/", views.conductor_toggle_dia_libre, name="conductor_dia_libre"),
 
     path("empresas/", views.EmpresaList.as_view(), name="empresa_list"),
     path("empresas/nueva/", views.EmpresaCreate.as_view(), name="empresa_crear"),

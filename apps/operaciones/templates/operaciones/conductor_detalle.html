@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}{{ object.nombre }} — Conductor — Estibapp{% endblock %}
+
+{% block content %}
+{# ── Header ── #}
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <div style="width:52px;height:52px;background:var(--color-dark);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="bi bi-person-badge fs-4 text-white"></i>
+    </div>
+    <div>
+        <h3 class="mb-0">{{ object.nombre }}</h3>
+        <div class="text-muted small">
+            {% if object.empresa %}{{ object.empresa }} &middot; {% endif %}
+            {% if object.rut %}RUT {{ object.rut }} &middot; {% endif %}
+            {% if object.telefono %}{{ object.telefono }}{% endif %}
+            <span class="ms-2 badge {% if object.estado == 'ACTIVO' %}bg-success{% else %}bg-secondary{% endif %}">
+                {{ object.get_estado_display }}
+            </span>
+        </div>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+        <a href="{% url 'operaciones:conductor_editar' object.pk %}"
+           class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-pencil me-1"></i>Editar
+        </a>
+        <a href="{% url 'operaciones:conductor_list' %}"
+           class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Volver
+        </a>
+    </div>
+</div>
+
+{# ── Strip de 7 días ── #}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center"
+         style="background:var(--color-dark);color:#fff;border-radius:.5rem .5rem 0 0;">
+        <span><i class="bi bi-calendar3 me-2"></i>Disponibilidad — próximos 7 días</span>
+        <span class="small opacity-75">
+            <span class="me-3">⬜ Disponible</span>
+            <span class="me-3" style="color:#f59e0b;">■ Día libre</span>
+            <span style="color:#CC0000;">■ En operación</span>
+        </span>
+    </div>
+    <div class="card-body p-3">
+        <div class="d-flex gap-2 flex-wrap">
+            {% for dia in dias_strip %}
+            <div class="text-center" style="min-width:80px;">
+                <div class="small text-muted mb-1">
+                    {% if dia.fecha == hoy %}Hoy{% else %}{{ dia.fecha|date:"D d/m" }}{% endif %}
+                </div>
+                <div class="rounded p-2 fw-semibold small"
+                     style="border:2px solid {% if dia.estado == 'libre' %}#f59e0b{% elif dia.estado == 'operacion' %}#CC0000{% else %}#dee2e6{% endif %};
+                            background:{% if dia.estado == 'libre' %}#fffbeb{% elif dia.estado == 'operacion' %}#fff5f5{% else %}#f8f9fa{% endif %};
+                            color:{% if dia.estado == 'libre' %}#92400e{% elif dia.estado == 'operacion' %}#CC0000{% else %}#495057{% endif %};">
+                    {% if dia.estado == 'libre' %}
+                        <i class="bi bi-moon-stars d-block fs-5 mb-1"></i>Libre
+                    {% elif dia.estado == 'operacion' %}
+                        <i class="bi bi-truck d-block fs-5 mb-1"></i>En op.
+                    {% else %}
+                        <i class="bi bi-check-circle d-block fs-5 mb-1"></i>Dispon.
+                    {% endif %}
+                </div>
+
+                {# Toggle día libre — solo admin/coordinador, solo si no tiene op activa #}
+                {% if not dia.tiene_op %}
+                <form method="post" action="{% url 'operaciones:conductor_dia_libre' object.pk %}" class="mt-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="fecha" value="{{ dia.fecha|date:'Y-m-d' }}">
+                    <button type="submit"
+                            class="btn btn-xs py-0 px-1 small"
+                            style="font-size:.7rem;border:1px solid {% if dia.es_libre %}#f59e0b{% else %}#ced4da{% endif %};
+                                   color:{% if dia.es_libre %}#92400e{% else %}#6c757d{% endif %};
+                                   background:transparent;"
+                            title="{% if dia.es_libre %}Quitar día libre{% else %}Marcar día libre{% endif %}">
+                        {% if dia.es_libre %}<i class="bi bi-x-circle"></i> Quitar{% else %}<i class="bi bi-plus-circle"></i> Libre{% endif %}
+                    </button>
+                </form>
+                {% else %}
+                <div class="mt-1 small text-muted" style="font-size:.7rem;">op. asignada</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{# ── Días libres registrados ── #}
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header small fw-semibold" style="background:#fffbeb;color:#92400e;border-bottom:2px solid #f59e0b;">
+                <i class="bi bi-moon-stars me-1"></i>Días libres registrados
+            </div>
+            <div class="card-body p-0">
+                {% if dias_libres %}
+                <ul class="list-group list-group-flush small">
+                    {% for dl in dias_libres %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                        <span>
+                            <strong>{{ dl.fecha|date:"d/m/Y" }}</strong>
+                            {% if dl.motivo %}<span class="text-muted ms-1">— {{ dl.motivo }}</span>{% endif %}
+                        </span>
+                        <form method="post" action="{% url 'operaciones:conductor_dia_libre' object.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="fecha" value="{{ dl.fecha|date:'Y-m-d' }}">
+                            <button type="submit" class="btn btn-sm py-0 px-1" style="color:#CC0000;border:none;background:none;" title="Eliminar">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted small p-3">Sin días libres registrados.</div>
+                {% endif %}
+            </div>
+            {# Agregar día libre con fecha personalizada #}
+            <div class="card-footer bg-white">
+                <form method="post" action="{% url 'operaciones:conductor_dia_libre' object.pk %}" class="d-flex gap-2 align-items-end">
+                    {% csrf_token %}
+                    <div class="flex-grow-1">
+                        <label class="form-label small mb-1">Agregar día libre</label>
+                        <input type="date" name="fecha" class="form-control form-control-sm" required
+                               min="{{ hoy|date:'Y-m-d' }}">
+                    </div>
+                    <div class="flex-grow-1">
+                        <label class="form-label small mb-1">Motivo (opcional)</label>
+                        <input type="text" name="motivo" class="form-control form-control-sm" placeholder="vacaciones, médico…">
+                    </div>
+                    <button type="submit" class="btn btn-sm text-white" style="background:var(--color-dark);white-space:nowrap;">
+                        <i class="bi bi-plus"></i> Agregar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {# ── ETAs próximas ── #}
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-header small fw-semibold" style="background:#f0f4ff;color:#1e3a8a;">
+                <i class="bi bi-list-ul me-1"></i>Operaciones pendientes
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ETA</th>
+                            <th>Cliente</th>
+                            <th>Contenedor</th>
+                            <th>Retiro</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for eta in etas_proximas %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'operaciones:eta_detalle' eta.pk %}"
+                                   class="text-decoration-none fw-semibold" style="color:var(--color-dark);">
+                                    {{ eta.numero }}
+                                </a>
+                            </td>
+                            <td class="text-muted">{{ eta.cliente.nombre|default:"—" }}</td>
+                            <td>
+                                {% if eta.contenedor %}
+                                <span class="badge bg-secondary">{{ eta.contenedor.codigo }}</span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>
+                                {% if eta.fecha_retiro %}
+                                    {{ eta.fecha_retiro|date:"d/m/Y" }}
+                                    {% if eta.hora_retiro %}<span class="text-muted"> {{ eta.hora_retiro|date:"H:i" }}</span>{% endif %}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>
+                                <span class="badge"
+                                      style="background:{% if eta.estado == 'SOLICITADO' %}#6c757d{% elif eta.estado == 'ASIGNADO' %}#2c2c3a{% elif eta.estado == 'EN_PATIO' %}#0d6efd{% elif eta.estado == 'ALMACENADO' %}#198754{% else %}#CC0000{% endif %};">
+                                    {{ eta.get_estado_display }}
+                                </span>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-3 d-block mb-1 opacity-50"></i>
+                                Sin operaciones pendientes.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

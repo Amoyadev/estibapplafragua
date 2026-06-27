@@ -36,7 +36,9 @@ from .models import (
     Camion,
     Cliente,
     Conductor,
+    conductor_disponible,
     Contenedor,
+    DiaLibre,
     Empresa,
     ESTADOS_CIERRE,
     ESTADOS_EN_DEPOSITO,
@@ -139,6 +141,7 @@ class BaseCatalogoList(AdminOCoordinador, ListView):
     crear_url = ""
     editar_url = ""
     eliminar_url = ""
+    detalle_url = ""  # URL opcional para un botón "Ver" por fila
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -148,6 +151,7 @@ class BaseCatalogoList(AdminOCoordinador, ListView):
             crear_url=self.crear_url,
             editar_url=self.editar_url,
             eliminar_url=self.eliminar_url,
+            detalle_url=self.detalle_url,
         )
         return ctx
 
@@ -224,6 +228,7 @@ class ConductorList(BaseCatalogoList):
     crear_url = "operaciones:conductor_crear"
     editar_url = "operaciones:conductor_editar"
     eliminar_url = "operaciones:conductor_eliminar"
+    detalle_url = "operaciones:conductor_detalle"
     columnas = [("Nombre", "nombre"), ("Empresa", "empresa"), ("RUT", "rut"), ("Teléfono", "telefono")]
 
     def get_queryset(self):
@@ -247,6 +252,76 @@ class ConductorUpdate(BaseCatalogoUpdate):
 class ConductorDelete(BaseCatalogoDelete):
     model = Conductor
     success_url = reverse_lazy("operaciones:conductor_list")
+
+
+class ConductorDetalle(AdminOCoordinador, DetailView):
+    """Perfil de conductor con calendario de disponibilidad (próximos 7 días)."""
+
+    model = Conductor
+    template_name = "operaciones/conductor_detalle.html"
+
+    def get_context_data(self, **kwargs):
+        from datetime import timedelta
+        ctx = super().get_context_data(**kwargs)
+        conductor = self.object
+        hoy = timezone.now().date()
+
+        # Strip de 7 días: estado por día
+        dias = []
+        for i in range(7):
+            fecha = hoy + timedelta(days=i)
+            es_libre = DiaLibre.objects.filter(conductor=conductor, fecha=fecha).exists()
+            tiene_op = ETA.objects.filter(
+                conductor=conductor, fecha_retiro=fecha
+            ).exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO).exists()
+            dias.append({
+                "fecha": fecha,
+                "es_libre": es_libre,
+                "tiene_op": tiene_op,
+                "estado": "libre" if es_libre else ("operacion" if tiene_op else "disponible"),
+            })
+
+        # ETAs próximas del conductor (no cerradas)
+        etas_proximas = (
+            ETA.objects.filter(conductor=conductor)
+            .exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
+            .select_related("cliente", "contenedor", "camion")
+            .order_by("fecha_retiro", "hora_retiro")[:20]
+        )
+        # Días libres futuros registrados
+        dias_libres = DiaLibre.objects.filter(conductor=conductor, fecha__gte=hoy).order_by("fecha")
+
+        ctx["dias_strip"] = dias
+        ctx["etas_proximas"] = etas_proximas
+        ctx["dias_libres"] = dias_libres
+        ctx["hoy"] = hoy
+        return ctx
+
+
+def conductor_toggle_dia_libre(request, pk):
+    """Toggle: marca o desmarca un día libre para el conductor. POST only."""
+    from datetime import date as date_cls
+    if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
+        return redirect("login")
+    conductor = get_object_or_404(Conductor, pk=pk)
+    if request.method == "POST":
+        fecha_str = request.POST.get("fecha", "").strip()
+        motivo = request.POST.get("motivo", "").strip()
+        try:
+            fecha = date_cls.fromisoformat(fecha_str)
+        except (ValueError, TypeError):
+            messages.error(request, "Fecha inválida.")
+            return redirect("operaciones:conductor_detalle", pk=pk)
+        obj, created = DiaLibre.objects.get_or_create(
+            conductor=conductor, fecha=fecha,
+            defaults={"motivo": motivo},
+        )
+        if not created:
+            obj.delete()
+            messages.success(request, f"Día libre del {fecha.strftime('%d/%m/%Y')} eliminado.")
+        else:
+            messages.success(request, f"Día libre registrado para el {fecha.strftime('%d/%m/%Y')}.")
+    return redirect("operaciones:conductor_detalle", pk=pk)
 
 
 # ---- Empresa (transporte / responsable) ----
@@ -483,9 +558,18 @@ class ETADetail(CualquierRol, DetailView):
         # Para el stepper visual y el bloque camión/conductor en movimiento manual
         ctx["flujo_pasos"] = FLUJO_PASOS
         ctx["camiones"] = Camion.objects.all().order_by("patente")
-        ctx["conductores"] = Conductor.objects.filter(
+        # Conductores activos con información de disponibilidad para la fecha de retiro
+        conductores_qs = Conductor.objects.filter(
             estado=Conductor.Estado.ACTIVO
         ).select_related("empresa").order_by("nombre")
+        fecha_ref = self.object.fecha_retiro or timezone.now().date()
+        conductores_info = []
+        for c in conductores_qs:
+            disp, motivo = conductor_disponible(c, fecha_ref)
+            conductores_info.append({"c": c, "disponible": disp, "motivo": motivo or ""})
+        # Mantener 'conductores' para compatibilidad + agregar 'conductores_info'
+        ctx["conductores"] = conductores_qs
+        ctx["conductores_info"] = conductores_info
         # Siguiente paso en el flujo para el formulario unificado
         sig_idx = actual_idx + 1
         if sig_idx < len(FLUJO_PASOS):

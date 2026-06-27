@@ -104,6 +104,44 @@ class Conductor(TimeStampedModel):
         return f"{self.nombre} — {self.empresa}" if self.empresa else self.nombre
 
 
+class DiaLibre(TimeStampedModel):
+    """Día libre registrado para un conductor (vacaciones, descanso, licencia)."""
+
+    conductor = models.ForeignKey(
+        Conductor,
+        on_delete=models.CASCADE,
+        related_name="dias_libres",
+    )
+    fecha = models.DateField()
+    motivo = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        verbose_name = "Día libre"
+        verbose_name_plural = "Días libres"
+        ordering = ["fecha"]
+        unique_together = [("conductor", "fecha")]
+
+    def __str__(self):
+        return f"{self.conductor.nombre} — {self.fecha}"
+
+
+def conductor_disponible(conductor, fecha):
+    """
+    Retorna (disponible: bool, motivo: str).
+    Un conductor NO está disponible si:
+      - Tiene un DiaLibre registrado para esa fecha.
+      - Tiene una ETA activa (no DESPACHADO_PUERTO) con fecha_retiro = esa fecha.
+    """
+    if DiaLibre.objects.filter(conductor=conductor, fecha=fecha).exists():
+        return False, "día libre"
+    if ETA.objects.filter(
+        conductor=conductor,
+        fecha_retiro=fecha,
+    ).exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO).exists():
+        return False, "en operación"
+    return True, None
+
+
 class Camion(TimeStampedModel):
     """Camión identificado por patente."""
 

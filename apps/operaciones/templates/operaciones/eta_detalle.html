@@ -159,9 +159,16 @@
                         <div class="col-6">
                             <select name="conductor_id" class="form-select form-select-sm">
                                 <option value="">— sin conductor —</option>
-                                {% for c in conductores %}
-                                    <option value="{{ c.pk }}" {% if eta.conductor_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
-                                {% endfor %}
+                                <optgroup label="✓ Disponibles">
+                                {% for item in conductores_info %}{% if item.disponible %}
+                                    <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %}>{{ item.c.nombre }}</option>
+                                {% endif %}{% endfor %}
+                                </optgroup>
+                                <optgroup label="✗ No disponibles ese día">
+                                {% for item in conductores_info %}{% if not item.disponible %}
+                                    <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %} style="color:#adb5bd;">{{ item.c.nombre }} — {{ item.motivo }}</option>
+                                {% endif %}{% endfor %}
+                                </optgroup>
                             </select>
                         </div>
                         <div class="col-12">
@@ -259,9 +266,16 @@
                                     <label class="form-label small">Conductor</label>
                                     <select name="conductor_mov" id="sel-conductor" class="form-select form-select-sm">
                                         <option value="">— seleccionar —</option>
-                                        {% for c in conductores %}
-                                            <option value="{{ c.pk }}" {% if eta.conductor_id == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
-                                        {% endfor %}
+                                        <optgroup label="✓ Disponibles">
+                                        {% for item in conductores_info %}{% if item.disponible %}
+                                            <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %}>{{ item.c.nombre }}</option>
+                                        {% endif %}{% endfor %}
+                                        </optgroup>
+                                        <optgroup label="✗ No disponibles ese día">
+                                        {% for item in conductores_info %}{% if not item.disponible %}
+                                            <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %} style="color:#adb5bd;">{{ item.c.nombre }} — {{ item.motivo }}</option>
+                                        {% endif %}{% endfor %}
+                                        </optgroup>
                                     </select>
                                 </div>
                             </div>

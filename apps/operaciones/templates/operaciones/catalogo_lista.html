@@ -23,6 +23,11 @@
                         <td>{{ obj|get_attr:attr }}</td>
                     {% endfor %}
                     <td class="text-end">
+                        {% if detalle_url %}
+                        <a href="{% url detalle_url obj.pk %}" class="btn btn-sm btn-outline-primary" title="Ver perfil">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% endif %}
                         <a href="{% url editar_url obj.pk %}" class="btn btn-sm btn-outline-secondary">Editar</a>
                         <a href="{% url eliminar_url obj.pk %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
                     </td>
