@@ -291,7 +291,35 @@
                             <label class="form-label small fw-semibold">
                                 Fecha agendada <span class="text-danger">*</span>
                             </label>
-                            <input type="datetime-local" name="fecha" class="form-control form-control-sm" required>
+                            <input type="hidden" name="fecha" id="inp-fecha">
+                            <div class="d-flex align-items-stretch gap-2">
+                                <input type="date" id="pk-date" class="form-control form-control-sm" style="max-width:160px;">
+                                <div class="d-flex align-items-center rounded" style="border:1px solid #dee2e6; background:#fff; padding:2px 10px; gap:6px;">
+                                    <div class="d-flex flex-column align-items-center" style="gap:1px;">
+                                        <button type="button" id="btn-h-up" aria-label="Subir hora"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-up"></i>
+                                        </button>
+                                        <span id="pk-hora" style="font-size:.9rem;font-weight:600;min-width:1.6ch;text-align:center;color:#212529;">08</span>
+                                        <button type="button" id="btn-h-down" aria-label="Bajar hora"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </button>
+                                    </div>
+                                    <span style="font-size:.85rem;font-weight:600;color:#adb5bd;margin-bottom:1px;">:</span>
+                                    <div class="d-flex flex-column align-items-center" style="gap:1px;">
+                                        <button type="button" id="btn-m-up" aria-label="Subir minuto"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-up"></i>
+                                        </button>
+                                        <span id="pk-min" style="font-size:.9rem;font-weight:600;min-width:1.6ch;text-align:center;color:#212529;">00</span>
+                                        <button type="button" id="btn-m-down" aria-label="Bajar minuto"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {# ─ Observación ─ #}
@@ -423,6 +451,41 @@
         const el = document.getElementById("txt-conductor");
         if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
     });
+
+    // ── Picker de fecha/hora personalizado ──────────────────────────────────
+    (function () {
+        const pkDate  = document.getElementById("pk-date");
+        const pkHora  = document.getElementById("pk-hora");
+        const pkMin   = document.getElementById("pk-min");
+        const hidden  = document.getElementById("inp-fecha");
+        if (!pkDate || !pkHora || !pkMin || !hidden) return;
+
+        // Estado
+        let hora = 8, min = 0;  // 00 ó 30
+
+        // Inicializar con fecha/hora actual
+        const now = new Date();
+        const pad = n => String(n).padStart(2, "0");
+        pkDate.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        hora = now.getHours();
+        min  = now.getMinutes() < 30 ? 0 : 30;
+
+        function render() {
+            pkHora.textContent = pad(hora);
+            pkMin.textContent  = pad(min);
+            if (pkDate.value) {
+                hidden.value = `${pkDate.value}T${pad(hora)}:${pad(min)}`;
+            }
+        }
+
+        document.getElementById("btn-h-up")  .addEventListener("click", () => { hora = (hora + 1) % 24;  render(); });
+        document.getElementById("btn-h-down") .addEventListener("click", () => { hora = (hora + 23) % 24; render(); });
+        document.getElementById("btn-m-up")  .addEventListener("click", () => { min  = min === 0 ? 30 : 0; if (min === 0) hora = (hora + 1) % 24; render(); });
+        document.getElementById("btn-m-down") .addEventListener("click", () => { min  = min === 30 ? 0 : 30; if (min === 30) hora = (hora + 23) % 24; render(); });
+        pkDate.addEventListener("change", render);
+
+        render();
+    })();
 })();
 </script>
 {% endblock %}
