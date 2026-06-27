@@ -1541,4 +1541,12 @@ def exportar_csv(request, tipo):
         writer.writerow([
             e.numero,
             e.cliente.nombre,
-      
+            e.agente.nombre,
+            e.contenedor.codigo,
+            e.conductor.nombre if e.conductor else "",
+            e.camion.patente if e.camion else "",
+            e.deposito,
+            e.fecha.isoformat(),
+            e.get_estado_display(),
+        ])
+    return response
