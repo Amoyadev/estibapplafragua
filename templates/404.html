@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Página no encontrada — Estibapp</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root { --estiba-deep:#0d1b2a; --estiba-accent:#2a9d8f; }
+        body {
+            min-height:100vh; display:flex; align-items:center; justify-content:center;
+            background:radial-gradient(1000px 500px at 15% -10%, #1b3a5b 0%, transparent 55%),
+                       radial-gradient(800px 450px at 110% 110%, #14323f 0%, transparent 50%),
+                       var(--estiba-deep);
+            color:#e0e1dd; text-align:center;
+        }
+        .err-code { font-size:5.5rem; font-weight:700; line-height:1; letter-spacing:-2px; }
+        .err-code .accent { color:var(--estiba-accent); }
+        .subtitle { color:#b8c1cc; }
+        .btn-estiba { background:var(--estiba-accent); border-color:var(--estiba-accent); color:#fff; }
+        .btn-estiba:hover { background:#23867b; border-color:#23867b; color:#fff; }
+        .footer-note { color:#7e8a99; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="err-code mb-2">4<span class="accent">0</span>4</div>
+        <h1 class="h5 fw-semibold mb-2">No encontramos la página</h1>
+        <p class="subtitle mb-4" style="max-width:30rem; margin-inline:auto;">
+            La dirección no existe o ya no está disponible.
+        </p>
+        <a href="{% url 'login' %}" class="btn btn-estiba px-4 py-2 fw-semibold">
+            <i class="bi bi-box-arrow-in-right me-1"></i> Volver al ingreso
+        </a>
+        <p class="footer-note small mt-4 mb-0">ESTIBApp · MVP1</p>
+    </div>
+</body>
+</html>
