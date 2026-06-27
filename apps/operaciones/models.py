@@ -457,4 +457,17 @@ FLUJO_ETA = [
     ETA.EstadoCiclo.DESPACHADO_PUERTO,
 ]
 
-# Estados en los que el contenedor es
+# Estados en los que el contenedor está físicamente EN EL DEPÓSITO. EDITABLE.
+ESTADOS_EN_DEPOSITO = [ETA.EstadoCiclo.EN_PATIO, ETA.EstadoCiclo.ALMACENADO]
+
+# Estados en los que el contenedor todavía está en el PUERTO (no llegó al depósito).
+ESTADOS_EN_PUERTO = [ETA.EstadoCiclo.SOLICITADO, ETA.EstadoCiclo.ASIGNADO]
+
+# Estados que representan cierre del ciclo (salida definitiva del depósito).
+ESTADOS_CIERRE = [ETA.EstadoCiclo.DESPACHADO_CLIENTE, ETA.EstadoCiclo.DESPACHADO_PUERTO]
+dor)
+ESTADOS_CIERRE = [
+    ETA.EstadoCiclo.DESPACHADO_CLIENTE,
+    ETA.EstadoCiclo.DESPACHADO_PUERTO,
+]
+

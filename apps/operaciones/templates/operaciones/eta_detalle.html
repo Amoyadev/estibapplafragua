@@ -325,3 +325,113 @@
 {# ══════════════════ Trazabilidad ══════════════════ #}
 <div class="card mt-3">
     <div class="card-header fw-semibold">
+        <i class="bi bi-list-check me-1"></i>Trazabilidad / movimientos
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Movimiento</th>
+                    <th>Fecha</th>
+                    <th>Empresa responsable</th>
+                    <th>Observación</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for m in movimientos %}
+                <tr {% if forloop.first %}style="background:#fff5f5;"{% endif %}>
+                    <td><span class="badge bg-secondary">{{ m.get_tipo_display }}</span></td>
+                    <td class="small">{{ m.fecha|date:"d/m/Y H:i" }}</td>
+                    <td class="small">{{ m.empresa_responsable|default:"—" }}</td>
+                    <td class="small">{{ m.observacion }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="4" class="text-muted text-center py-3">
+                        <i class="bi bi-inbox me-1"></i>Sin movimientos registrados.
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const sel        = document.getElementById("sel-paso");
+    const bloque     = document.getElementById("bloque-retiro");
+    const selCamion  = document.getElementById("sel-camion");
+    const selCond    = document.getElementById("sel-conductor");
+    const chip       = document.getElementById("estado-chip");
+
+    const ETIQUETAS = {
+        "Asignado":               { color: "#0dcaf0", icon: "bi-person-check",           bg: "#cff4fc" },
+        "En patio":               { color: "#0d6efd", icon: "bi-box-arrow-in-down",      bg: "#e7f1ff" },
+        "Almacenado en patio":    { color: "#198754", icon: "bi-archive",                bg: "#d1e7dd" },
+        "Despachado a cliente":   { color: "#f59e0b", icon: "bi-box-arrow-right",        bg: "#fff3cd" },
+        "Devuelto a depósito":    { color: "#6f42c1", icon: "bi-box-arrow-in-left",      bg: "#ede9f8" },
+        "Despachado a puerto":    { color: "#CC0000", icon: "bi-ship",                   bg: "#fde8e8" },
+    };
+
+    function actualizarSelector() {
+        if (!sel) return;
+        const opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) {
+            sel.style.borderLeftColor = "#6c757d";
+            if (chip) chip.style.display = "none";
+            return;
+        }
+
+        const color = opt.dataset.color || "#6c757d";
+        sel.style.borderLeftColor = color;
+
+        if (chip) {
+            const info = ETIQUETAS[opt.text.trim()] || { color, icon: "bi-arrow-right-circle", bg: "#f0f0f0" };
+            chip.style.cssText = `display:inline-flex!important; background:${info.bg}; color:${info.color}; border:1px solid ${info.color}40;`;
+            chip.innerHTML = `<i class="bi ${info.icon} me-1"></i>${opt.text.trim()}`;
+        }
+
+        const esTransporte = opt.dataset.transporte === "1";
+        if (bloque) bloque.style.display = esTransporte ? "" : "none";
+        if (selCamion) selCamion.required = esTransporte;
+        if (selCond)   selCond.required   = esTransporte;
+
+        const lblTransporte = document.getElementById("lbl-transporte");
+        if (lblTransporte && esTransporte) {
+            const lbl = opt.text.trim();
+            if (lbl.includes("Asignado"))          lblTransporte.textContent = "Asignar transporte para ida a puerto";
+            else if (lbl.includes("En patio"))     lblTransporte.textContent = "Confirmar transporte — retiro del puerto";
+            else if (lbl.includes("cliente"))      lblTransporte.textContent = "Asignar transporte para despacho a cliente";
+            else if (lbl.includes("puerto"))       lblTransporte.textContent = "Asignar transporte para despacho a puerto";
+            else                                   lblTransporte.textContent = "Asignar transporte";
+        }
+    }
+
+    if (sel) {
+        sel.addEventListener("change", actualizarSelector);
+        actualizarSelector();
+    }
+
+    if (selCamion) selCamion.addEventListener("change", function () {
+        const el = document.getElementById("txt-camion");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text : "— sin asignar —";
+    });
+    if (selCond) selCond.addEventListener("change", function () {
+        const el = document.getElementById("txt-conductor");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
+    });
+})();
+</script>
+{% endblock %}
+;
+    });
+    if (selCond) selCond.addEventListener("change", function () {
+        const el = document.getElementById("txt-conductor");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
+    });
+})();
+</script>
+{% endblock %}
