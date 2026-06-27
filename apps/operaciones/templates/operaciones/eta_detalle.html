@@ -291,25 +291,32 @@
                             <label class="form-label small fw-semibold">
                                 Fecha agendada <span class="text-danger">*</span>
                             </label>
-                            {# Input oculto que recibe el valor final para el POST #}
                             <input type="hidden" name="fecha" id="inp-fecha">
-                            {# Picker personalizado: fecha + hora con flechas + minutos 00/30 #}
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <input type="date" id="pk-date"
-                                       class="form-control form-control-sm"
-                                       style="max-width:160px;">
-                                <div class="d-flex align-items-center gap-1 border rounded px-2 py-1"
-                                     style="background:#fff; gap:.25rem!important;">
-                                    <div class="d-flex flex-column align-items-center" style="line-height:1;">
-                                        <button type="button" class="btn btn-link btn-sm p-0 lh-1 text-secondary" id="btn-h-up"   aria-label="Subir hora">▲</button>
-                                        <span id="pk-hora" class="fw-bold px-1" style="font-size:1.1rem;min-width:2ch;text-align:center;">08</span>
-                                        <button type="button" class="btn btn-link btn-sm p-0 lh-1 text-secondary" id="btn-h-down" aria-label="Bajar hora">▼</button>
+                            <div class="d-flex align-items-stretch gap-2">
+                                <input type="date" id="pk-date" class="form-control form-control-sm" style="max-width:160px;">
+                                <div class="d-flex align-items-center rounded" style="border:1px solid #dee2e6; background:#fff; padding:2px 10px; gap:6px;">
+                                    <div class="d-flex flex-column align-items-center" style="gap:1px;">
+                                        <button type="button" id="btn-h-up" aria-label="Subir hora"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-up"></i>
+                                        </button>
+                                        <span id="pk-hora" style="font-size:.9rem;font-weight:600;min-width:1.6ch;text-align:center;color:#212529;">08</span>
+                                        <button type="button" id="btn-h-down" aria-label="Bajar hora"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </button>
                                     </div>
-                                    <span class="fw-bold" style="font-size:1.1rem;">:</span>
-                                    <div class="d-flex flex-column align-items-center" style="line-height:1;">
-                                        <button type="button" class="btn btn-link btn-sm p-0 lh-1 text-secondary" id="btn-m-up"   aria-label="Subir minuto">▲</button>
-                                        <span id="pk-min" class="fw-bold px-1" style="font-size:1.1rem;min-width:2ch;text-align:center;">00</span>
-                                        <button type="button" class="btn btn-link btn-sm p-0 lh-1 text-secondary" id="btn-m-down" aria-label="Bajar minuto">▼</button>
+                                    <span style="font-size:.85rem;font-weight:600;color:#adb5bd;margin-bottom:1px;">:</span>
+                                    <div class="d-flex flex-column align-items-center" style="gap:1px;">
+                                        <button type="button" id="btn-m-up" aria-label="Subir minuto"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-up"></i>
+                                        </button>
+                                        <span id="pk-min" style="font-size:.9rem;font-weight:600;min-width:1.6ch;text-align:center;color:#212529;">00</span>
+                                        <button type="button" id="btn-m-down" aria-label="Bajar minuto"
+                                                style="background:none;border:none;padding:0;line-height:1;color:#6c757d;font-size:.65rem;">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
