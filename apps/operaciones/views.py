@@ -663,6 +663,12 @@ class ETADetail(CualquierRol, DetailView):
             ETA.EstadoCiclo.DESPACHADO_PUERTO:  "#CC0000",
         }
         # Todos los pasos futuros (para el selector de estado en el form)
+        # Reglas de filtrado:
+        # 1. "En patio" (RETIRO) nunca se muestra como opción: el while-loop en
+        #    eta_movimiento_manual lo atraviesa automáticamente como estado intermedio.
+        # 2. "Devuelto a depósito" (idx 5) solo aparece cuando el contenedor ya
+        #    fue despachado al cliente y está regresando al depósito.
+        ya_cliente = self.object.ya_despachado_a_cliente()
         ctx["pasos_futuros"] = [
             {
                 "idx": p["idx"],
@@ -673,6 +679,8 @@ class ETADetail(CualquierRol, DetailView):
             }
             for p in estados_flujo
             if p["futuro"]
+            and FLUJO_PASOS[p["idx"]].get("mov") != Movimiento.Tipo.RETIRO  # excluir "En patio"
+            and not (p["idx"] == 5 and not ya_cliente)  # "Devuelto" solo tras despacho a cliente
         ]
         # Conductor "inactivo": ETA en patio pero camión ya salió del depósito
         ctx["conductor_inactivo"] = self.object.estado == ETA.EstadoCiclo.ALMACENADO
