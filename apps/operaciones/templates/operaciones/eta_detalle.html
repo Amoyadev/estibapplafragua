@@ -136,16 +136,24 @@
                     </div>
                 </div>
 
-                {# ── Transporte asignado (inline, editable) ── #}
+                {# ── Transporte asignado ── #}
+                {# Si el siguiente paso es un RETIRO, los selects van dentro del form de movimiento (abajo). #}
+                {# Si NO es retiro, aquí se puede actualizar el transporte de forma independiente.           #}
                 <div class="border rounded p-3 mb-3" style="background:#f8f9fa;">
                     <p class="small fw-semibold mb-2">
                         <i class="bi bi-truck me-1"></i>Transporte asignado
                     </p>
-                    <div class="d-flex gap-3 mb-2 small">
-                        <span><span class="text-muted">Camión:</span> <strong>{{ eta.camion.patente|default:"— sin asignar —" }}</strong></span>
-                        <span><span class="text-muted">Conductor:</span> <strong>{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong></span>
+                    <div id="transporte-display" class="d-flex gap-3 mb-2 small">
+                        <span><span class="text-muted">Camión:</span>
+                            <strong id="txt-camion">{{ eta.camion.patente|default:"— sin asignar —" }}</strong>
+                        </span>
+                        <span><span class="text-muted">Conductor:</span>
+                            <strong id="txt-conductor">{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong>
+                        </span>
                     </div>
                     {% if user|en_grupo:"Administrador,Coordinador" %}
+                    {# Formulario de actualización independiente — solo cuando NO hay un retiro pendiente #}
+                    {% if not siguiente_es_retiro %}
                     <form method="post" action="{% url 'operaciones:eta_transporte' eta.pk %}" class="row g-2">
                         {% csrf_token %}
                         <div class="col-6">
@@ -177,6 +185,11 @@
                             </button>
                         </div>
                     </form>
+                    {% else %}
+                    <div class="small text-muted fst-italic">
+                        <i class="bi bi-info-circle me-1"></i>Cambia camión y conductor en el formulario de movimiento (abajo).
+                    </div>
+                    {% endif %}
                     {% endif %}
                 </div>
 
@@ -249,13 +262,14 @@
                         {# ─ Camión + Conductor — solo si el estado destino es RETIRO ─ #}
                         <div id="bloque-retiro" class="mb-2 p-2 rounded" style="background:#fff8e1; border:1px solid #ffc107; display:none;">
                             <p class="small fw-semibold mb-2">
-                                <i class="bi bi-truck me-1"></i>Ida a puerto — asigna transporte
+                                <i class="bi bi-truck me-1"></i>Asignar transporte para ida a puerto
                                 <span class="text-danger">*</span>
                             </p>
                             <div class="row g-2">
                                 <div class="col-6">
                                     <label class="form-label small">Camión</label>
-                                    <select name="camion_mov" id="sel-camion" class="form-select form-select-sm">
+                                    <select name="camion_mov" id="sel-camion" class="form-select form-select-sm"
+                                            onchange="document.getElementById('txt-camion').textContent = this.options[this.selectedIndex].text || '— sin asignar —'">
                                         <option value="">— seleccionar —</option>
                                         {% for c in camiones %}
                                             <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
@@ -264,7 +278,8 @@
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label small">Conductor</label>
-                                    <select name="conductor_mov" id="sel-conductor" class="form-select form-select-sm">
+                                    <select name="conductor_mov" id="sel-conductor" class="form-select form-select-sm"
+                                            onchange="document.getElementById('txt-conductor').textContent = this.options[this.selectedIndex].text.split(' —')[0] || '— sin asignar —'">
                                         <option value="">— seleccionar —</option>
                                         <optgroup label="✓ Disponibles">
                                         {% for item in conductores_info %}{% if item.disponible %}
