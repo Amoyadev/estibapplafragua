@@ -584,12 +584,22 @@ class ETADetail(CualquierRol, DetailView):
             ctx["siguiente_es_retiro"] = False
         # Último movimiento para mostrarlo en el card
         ctx["ultimo_movimiento"] = self.object.movimientos.first()
+        # Paleta de colores por estado (para resaltar el selector "Avanzar a")
+        _COLOR_PASO = {
+            ETA.EstadoCiclo.SOLICITADO:        "#6c757d",
+            ETA.EstadoCiclo.ASIGNADO:          "#2c2c3a",
+            ETA.EstadoCiclo.EN_PATIO:          "#0d6efd",
+            ETA.EstadoCiclo.ALMACENADO:        "#198754",
+            ETA.EstadoCiclo.DESPACHADO_CLIENTE: "#f59e0b",
+            ETA.EstadoCiclo.DESPACHADO_PUERTO:  "#CC0000",
+        }
         # Todos los pasos futuros (para el selector de estado en el form)
         ctx["pasos_futuros"] = [
             {
                 "idx": p["idx"],
                 "label": p["label"],
                 "es_retiro": FLUJO_PASOS[p["idx"]].get("mov") == Movimiento.Tipo.RETIRO,
+                "color": _COLOR_PASO.get(FLUJO_PASOS[p["idx"]]["estado"], "#6c757d"),
             }
             for p in estados_flujo
             if p["futuro"]

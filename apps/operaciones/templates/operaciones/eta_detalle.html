@@ -136,61 +136,19 @@
                     </div>
                 </div>
 
-                {# ── Transporte asignado ── #}
-                {# Si el siguiente paso es un RETIRO, los selects van dentro del form de movimiento (abajo). #}
-                {# Si NO es retiro, aquí se puede actualizar el transporte de forma independiente.           #}
-                <div class="border rounded p-3 mb-3" style="background:#f8f9fa;">
-                    <p class="small fw-semibold mb-2">
-                        <i class="bi bi-truck me-1"></i>Transporte asignado
-                    </p>
-                    <div id="transporte-display" class="d-flex gap-3 mb-2 small">
-                        <span><span class="text-muted">Camión:</span>
-                            <strong id="txt-camion">{{ eta.camion.patente|default:"— sin asignar —" }}</strong>
-                        </span>
-                        <span><span class="text-muted">Conductor:</span>
-                            <strong id="txt-conductor">{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong>
-                        </span>
-                    </div>
-                    {% if user|en_grupo:"Administrador,Coordinador" %}
-                    {# Formulario de actualización independiente — solo cuando NO hay un retiro pendiente #}
-                    {% if not siguiente_es_retiro %}
-                    <form method="post" action="{% url 'operaciones:eta_transporte' eta.pk %}" class="row g-2">
-                        {% csrf_token %}
-                        <div class="col-6">
-                            <select name="camion_id" class="form-select form-select-sm">
-                                <option value="">— sin camión —</option>
-                                {% for c in camiones %}
-                                    <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <select name="conductor_id" class="form-select form-select-sm">
-                                <option value="">— sin conductor —</option>
-                                <optgroup label="✓ Disponibles">
-                                {% for item in conductores_info %}{% if item.disponible %}
-                                    <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %}>{{ item.c.nombre }}</option>
-                                {% endif %}{% endfor %}
-                                </optgroup>
-                                <optgroup label="✗ No disponibles ese día">
-                                {% for item in conductores_info %}{% if not item.disponible %}
-                                    <option value="{{ item.c.pk }}" {% if eta.conductor_id == item.c.pk %}selected{% endif %} style="color:#adb5bd;">{{ item.c.nombre }} — {{ item.motivo }}</option>
-                                {% endif %}{% endfor %}
-                                </optgroup>
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <button class="btn btn-sm btn-outline-secondary w-100">
-                                <i class="bi bi-arrow-repeat me-1"></i>Actualizar transporte
-                            </button>
-                        </div>
-                    </form>
-                    {% else %}
-                    <div class="small text-muted fst-italic">
-                        <i class="bi bi-info-circle me-1"></i>Cambia camión y conductor en el formulario de movimiento (abajo).
-                    </div>
-                    {% endif %}
-                    {% endif %}
+                {# ── Transporte asignado — solo display, editable dentro del form de movimiento ── #}
+                <div class="border rounded p-3 mb-3 small" style="background:#f8f9fa;">
+                    <span class="fw-semibold me-3">
+                        <i class="bi bi-truck me-1 text-muted"></i>Transporte:
+                    </span>
+                    <span class="me-3">
+                        <span class="text-muted">Camión</span>
+                        <strong id="txt-camion" class="ms-1">{{ eta.camion.patente|default:"— sin asignar —" }}</strong>
+                    </span>
+                    <span>
+                        <span class="text-muted">Conductor</span>
+                        <strong id="txt-conductor" class="ms-1">{{ eta.conductor.nombre|default:"— sin asignar —" }}</strong>
+                    </span>
                 </div>
 
                 {# ── Último movimiento ── #}
@@ -222,21 +180,29 @@
                     <form method="post" action="{% url 'operaciones:eta_movimiento' eta.pk %}" id="form-avance">
                         {% csrf_token %}
 
-                        {# ─ Avanzar a (selector de estados futuros) ─ #}
-                        <div class="mb-2">
+                        {# ─ Avanzar a (selector de estados futuros con color dinámico) ─ #}
+                        <div class="mb-3">
                             <label class="form-label small fw-semibold">
                                 Avanzar a <span class="text-danger">*</span>
                             </label>
-                            <select name="siguiente_paso_idx" id="sel-paso" class="form-select form-select-sm" required>
-                                <option value="">— seleccionar estado destino —</option>
-                                {% for p in pasos_futuros %}
-                                <option value="{{ p.idx }}"
-                                        data-retiro="{% if p.es_retiro %}1{% else %}0{% endif %}"
-                                        {% if forloop.first %}selected{% endif %}>
-                                    {{ p.label }}
-                                </option>
-                                {% endfor %}
-                            </select>
+                            <div class="position-relative">
+                                <select name="siguiente_paso_idx" id="sel-paso"
+                                        class="form-select form-select-sm ps-3"
+                                        style="border-left:4px solid #6c757d; border-radius:.375rem; font-weight:600; transition:border-color .2s;"
+                                        required>
+                                    <option value="">— seleccionar estado destino —</option>
+                                    {% for p in pasos_futuros %}
+                                    <option value="{{ p.idx }}"
+                                            data-retiro="{% if p.es_retiro %}1{% else %}0{% endif %}"
+                                            data-color="{{ p.color|default:'#6c757d' }}"
+                                            {% if forloop.first %}selected{% endif %}>
+                                        {{ p.label }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {# Chip indicador del estado seleccionado #}
+                            <div id="estado-chip" class="mt-1 d-inline-flex align-items-center gap-1 px-2 py-1 rounded small fw-semibold" style="display:none!important;font-size:.72rem;"></div>
                         </div>
 
                         {# ─ Estado del contenedor ─ #}
@@ -371,24 +337,62 @@
 {% block extra_js %}
 <script>
 (function () {
-    const sel = document.getElementById("sel-paso");
-    const bloque = document.getElementById("bloque-retiro");
-    const selCamion = document.getElementById("sel-camion");
-    const selConductor = document.getElementById("sel-conductor");
+    const sel        = document.getElementById("sel-paso");
+    const bloque     = document.getElementById("bloque-retiro");
+    const selCamion  = document.getElementById("sel-camion");
+    const selCond    = document.getElementById("sel-conductor");
+    const chip       = document.getElementById("estado-chip");
 
-    function toggleRetiro() {
-        if (!sel || !bloque) return;
-        const opt = sel.options[sel.selectedIndex];
-        const esRetiro = opt && opt.dataset.retiro === "1";
-        bloque.style.display = esRetiro ? "" : "none";
-        if (selCamion) selCamion.required = esRetiro;
-        if (selConductor) selConductor.required = esRetiro;
+    // ── Paleta de colores por estado (coincide con views.py _COLOR_PASO) ──
+    const ETIQUETAS = {
+        "En patio":               { color: "#0d6efd", icon: "bi-box-arrow-in-down",     bg: "#e7f1ff" },
+        "Almacenado":             { color: "#198754", icon: "bi-archive",                bg: "#d1e7dd" },
+        "Despachado a cliente":   { color: "#f59e0b", icon: "bi-box-arrow-right",        bg: "#fff3cd" },
+        "Devuelto a depósito":    { color: "#6f42c1", icon: "bi-box-arrow-in-left",      bg: "#ede9f8" },
+        "Despachado a puerto":    { color: "#CC0000", icon: "bi-ship",                   bg: "#fde8e8" },
+    };
+
+    function actualizarSelector() {
+        if (!sel) return;
+        const opt   = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) {
+            sel.style.borderLeftColor = "#6c757d";
+            if (chip) chip.style.display = "none";
+            return;
+        }
+
+        // Color del borde del select
+        const color = opt.dataset.color || "#6c757d";
+        sel.style.borderLeftColor = color;
+
+        // Chip indicador
+        if (chip) {
+            const info = ETIQUETAS[opt.text.trim()] || { color, icon: "bi-arrow-right-circle", bg: "#f0f0f0" };
+            chip.style.cssText = `display:inline-flex!important; background:${info.bg}; color:${info.color}; border:1px solid ${info.color}40;`;
+            chip.innerHTML = `<i class="bi ${info.icon} me-1"></i>${opt.text.trim()}`;
+        }
+
+        // Mostrar/ocultar bloque de retiro
+        const esRetiro = opt.dataset.retiro === "1";
+        if (bloque) bloque.style.display = esRetiro ? "" : "none";
+        if (selCamion)  selCamion.required  = esRetiro;
+        if (selCond)    selCond.required     = esRetiro;
     }
 
     if (sel) {
-        sel.addEventListener("change", toggleRetiro);
-        toggleRetiro(); // run on load for pre-selected option
+        sel.addEventListener("change", actualizarSelector);
+        actualizarSelector();   // inicializar con el valor pre-seleccionado
     }
+
+    // Sincronizar nombres en el display "Transporte" al cambiar camión/conductor
+    if (selCamion) selCamion.addEventListener("change", function () {
+        const el = document.getElementById("txt-camion");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text : "— sin asignar —";
+    });
+    if (selCond) selCond.addEventListener("change", function () {
+        const el = document.getElementById("txt-conductor");
+        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
+    });
 })();
 </script>
 {% endblock %}
