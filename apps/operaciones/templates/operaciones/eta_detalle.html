@@ -426,12 +426,3 @@
 })();
 </script>
 {% endblock %}
-;
-    });
-    if (selCond) selCond.addEventListener("change", function () {
-        const el = document.getElementById("txt-conductor");
-        if (el) el.textContent = this.value ? this.options[this.selectedIndex].text.split(" —")[0] : "— sin asignar —";
-    });
-})();
-</script>
-{% endblock %}
