@@ -490,4 +490,86 @@ class Movimiento(TimeStampedModel):
 
 # ================================================================
 # FLUJO OPERATIVO DE LA ETA  (EDITABLE — base MVP)
-# -----------------
+# -----------------# ----------------------------------------------------------------
+# El ciclo NO es lineal: el contenedor sale a cliente (cierre parcial) y
+# RETORNA al depósito (vuelve a ALMACENADO) antes del cierre final
+# "Despachado a puerto". Por eso el avance se modela como una lista de PASOS,
+# no de estados únicos. Cada paso define:
+#   - estado : estado de la ETA al llegar a ese paso (ETA.EstadoCiclo)
+#   - mov    : movimiento que se registra al ENTRAR al paso (o None)
+#   - label  : etiqueta para el stepper de la tarjeta
+# El foco del ciclo es TRAZAR EL CONTENEDOR: ver dónde está físicamente.
+# ================================================================
+FLUJO_PASOS = [
+    # requiere_transporte=True: el coordinador debe asignar camión+conductor para avanzar.
+    # False: el contenedor se mueve sin transporte activo (almacenaje interno).
+    {"estado": ETA.EstadoCiclo.SOLICITADO,         "mov": None,                             "label": "Solicitado por cliente",  "requiere_transporte": False},
+    {"estado": ETA.EstadoCiclo.ASIGNADO,           "mov": None,                             "label": "Asignado",                "requiere_transporte": True},
+    {"estado": ETA.EstadoCiclo.EN_PATIO,           "mov": Movimiento.Tipo.RETIRO,           "label": "En patio",                "requiere_transporte": True},
+    {"estado": ETA.EstadoCiclo.ALMACENADO,         "mov": Movimiento.Tipo.ALMACENAJE,       "label": "Almacenado en patio",     "requiere_transporte": False},
+    {"estado": ETA.EstadoCiclo.DESPACHADO_CLIENTE, "mov": Movimiento.Tipo.DESPACHO_CLIENTE, "label": "Despachado a cliente",    "requiere_transporte": True},
+    {"estado": ETA.EstadoCiclo.ALMACENADO,         "mov": Movimiento.Tipo.RETORNO,          "label": "Devuelto a depósito",     "requiere_transporte": False},
+    {"estado": ETA.EstadoCiclo.DESPACHADO_PUERTO,  "mov": Movimiento.Tipo.DESPACHO_PUERTO,  "label": "Despachado a puerto",     "requiere_transporte": True},
+]
+
+# Lista de estados únicos en orden (selects/filtros). El retorno reutiliza
+# ALMACENADO, por eso no se repite aquí.
+FLUJO_ETA = [
+    ETA.EstadoCiclo.SOLICITADO,
+    ETA.EstadoCiclo.ASIGNADO,
+    ETA.EstadoCiclo.EN_PATIO,
+    ETA.EstadoCiclo.ALMACENADO,
+    ETA.EstadoCiclo.DESPACHADO_CLIENTE,
+    ETA.EstadoCiclo.DESPACHADO_PUERTO,
+]
+
+# Estados en los que el contenedor está físicamente EN EL DEPÓSITO. EDITABLE.
+ESTADOS_EN_DEPOSITO = [ETA.EstadoCiclo.EN_PATIO, ETA.EstadoCiclo.ALMACENADO]
+
+# Estados en los que el contenedor todavía está en el PUERTO (no llegó al depósito).
+ESTADOS_EN_PUERTO = [ETA.EstadoCiclo.SOLICITADO, ETA.EstadoCiclo.ASIGNADO]
+
+# Estados que representan cierre del ciclo (salida definitiva del depósito).
+ESTADOS_CIERRE = [ETA.EstadoCiclo.DESPACHADO_CLIENTE, ETA.EstadoCiclo.DESPACHADO_PUERTO]
+-----------------------------------------------
+# El ciclo NO es lineal: el contenedor sale a cliente (cierre parcial) y
+# RETORNA al depósito (vuelve a ALMACENADO) antes del cierre final
+# "Despachado a puerto". Por eso el avance se modela como una lista de PASOS,
+# no de estados únicos. Cada paso define:
+#   - estado : estado de la ETA al llegar a ese paso (ETA.EstadoCiclo)
+#   - mov    : movimiento que se registra al ENTRAR al paso (o None)
+#   - label  : etiqueta para el stepper de la tarjeta
+# El foco del ciclo es TRAZAR EL CONTENEDOR: ver dónde está físicamente.
+# ================================================================
+FLUJO_PASOS = [
+    # requiere_transporte=True: el coordinador debe asignar camión+conductor para avanzar.
+    # False: el contenedor se mueve sin transporte activo (almacenaje interno).
+    {"estado": ETA.EstadoCiclo.SOLICITADO,         "mov": None,                             "label": "Solicitado por cliente",  "requiere_transporte": False},
+    {"estado": ETA.EstadoCiclo.ASIGNADO,           "mov": None,                             "label": "Asignado",                "requiere_transporte": True},
+    {"estado": ETA.EstadoCiclo.EN_PATIO,           "mov": Movimiento.Tipo.RETIRO,           "label": "En patio",                "requiere_transporte": True},
+    {"estado": ETA.EstadoCiclo.ALMACENADO,         "mov": Movimiento.Tipo.ALMACENAJE,       "label": "Almacenado en patio",     "requiere_transporte": False},
+    {"estado": ETA.EstadoCiclo.DESPACHADO_CLIENTE, "mov": Movimiento.Tipo.DESPACHO_CLIENTE, "label": "Despachado a cliente",    "requiere_transporte": True},
+    {"estado": ETA.EstadoCiclo.ALMACENADO,         "mov": Movimiento.Tipo.RETORNO,          "label": "Devuelto a depósito",     "requiere_transporte": False},
+    {"estado": ETA.EstadoCiclo.DESPACHADO_PUERTO,  "mov": Movimiento.Tipo.DESPACHO_PUERTO,  "label": "Despachado a puerto",     "requiere_transporte": True},
+]
+
+# Lista de estados únicos en orden (selects/filtros). El retorno reutiliza
+# ALMACENADO, por eso no se repite aquí.
+FLUJO_ETA = [
+    ETA.EstadoCiclo.SOLICITADO,
+    ETA.EstadoCiclo.ASIGNADO,
+    ETA.EstadoCiclo.EN_PATIO,
+    ETA.EstadoCiclo.ALMACENADO,
+    ETA.EstadoCiclo.DESPACHADO_CLIENTE,
+    ETA.EstadoCiclo.DESPACHADO_PUERTO,
+]
+
+# Estados en los que el contenedor está físicamente EN EL DEPÓSITO. EDITABLE.
+ESTADOS_EN_DEPOSITO = [ETA.EstadoCiclo.EN_PATIO, ETA.EstadoCiclo.ALMACENADO]
+
+# Estados en los que el contenedor todavía está en el PUERTO (no llegó al depósito).
+ESTADOS_EN_PUERTO = [ETA.EstadoCiclo.SOLICITADO, ETA.EstadoCiclo.ASIGNADO]
+
+# Estados que representan cierre del ciclo (salida definitiva del depósito).
+ESTADOS_CIERRE = [ETA.EstadoCiclo.DESPACHADO_CLIENTE, ETA.EstadoCiclo.DESPACHADO_PUERTO]
+
