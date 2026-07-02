@@ -9,6 +9,7 @@ from .models import (
     Empresa,
     ETA,
     Movimiento,
+    RegistroConductor,
 )
 
 
@@ -38,12 +39,27 @@ class EmpresaAdmin(admin.ModelAdmin):
     list_filter = ("activo",)
 
 
+class RegistroConductorInline(admin.TabularInline):
+    model = RegistroConductor
+    extra = 0
+    fields = ("tipo", "fecha", "descripcion", "valor")
+
+
 @admin.register(Conductor)
 class ConductorAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "empresa", "rut", "telefono")
+    list_display = ("nombre", "empresa", "rut", "licencia",
+                    "fecha_vencimiento_licencia", "telefono", "estado")
     search_fields = ("nombre", "rut", "empresa__nombre")
-    list_filter = ("empresa",)
+    list_filter = ("estado", "empresa")
     autocomplete_fields = ("empresa",)
+    inlines = [RegistroConductorInline]
+
+
+@admin.register(RegistroConductor)
+class RegistroConductorAdmin(admin.ModelAdmin):
+    list_display = ("conductor", "tipo", "fecha", "valor")
+    list_filter = ("tipo", "fecha")
+    search_fields = ("conductor__nombre",)
 
 
 @admin.register(Camion)

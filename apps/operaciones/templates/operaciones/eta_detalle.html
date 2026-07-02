@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load op_extras %}
-{% block title %}ETA {{ eta.numero }} — Estibapp{% endblock %}
+{% block title %}{{ eta.contenedor.codigo }} · Op. {{ eta.numero }} — Estibapp{% endblock %}
 {% block content %}
 
 {# ── Cabecera ── #}
@@ -10,7 +10,7 @@
             <i class="bi bi-box-seam me-1"></i>{{ eta.contenedor.codigo }}
             <small class="text-muted fs-6">({{ eta.contenedor.get_tipo_display }})</small>
         </h3>
-        <div class="text-muted small">ETA {{ eta.numero }} · {{ eta.cliente.nombre }}</div>
+        <div class="text-muted small">Op. {{ eta.numero }} · {{ eta.cliente.nombre }}</div>
     </div>
     <div class="text-end">
         <div><span class="badge {{ eta.estado|estado_badge }} fs-6">{{ eta.get_estado_display }}</span></div>
@@ -76,7 +76,7 @@
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">Camión</span>
                         <strong class="{% if conductor_inactivo %}text-muted{% endif %}">
-                            {{ eta.camion.patente|default:"— sin asignar —" }}
+                            {{ eta.tracto.patente|default:eta.camion.patente|default:"— sin asignar —" }}
                         </strong>
                     </div>
                     <div class="d-flex justify-content-between mt-1">
@@ -163,7 +163,7 @@
                     <span class="me-3">
                         <span class="text-muted">Camión</span>
                         <strong id="txt-camion" class="ms-1 {% if conductor_inactivo %}text-muted{% endif %}">
-                            {{ eta.camion.patente|default:"— sin asignar —" }}
+                            {{ eta.tracto.patente|default:eta.camion.patente|default:"— sin asignar —" }}
                         </strong>
                     </span>
                     <span>
@@ -262,7 +262,7 @@
                                             onchange="document.getElementById('txt-camion').textContent = this.options[this.selectedIndex].text || '— sin asignar —'">
                                         <option value="">— seleccionar —</option>
                                         {% for c in camiones %}
-                                            <option value="{{ c.pk }}" {% if eta.camion_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
+                                            <option value="{{ c.pk }}" {% if eta.tracto_id == c.pk %}selected{% endif %}>{{ c.patente }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>

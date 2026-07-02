@@ -42,7 +42,7 @@
     <div class="card mb-3">
         <div class="card-header fw-semibold"><i class="bi bi-truck"></i> Asignación de transporte</div>
         <div class="card-body"><div class="row">
-            {% for field in form %}{% if field.name in "conductor,camion" %}
+            {% for field in form %}{% if field.name in "conductor,tracto" %}
                 <div class="col-md-6 mb-3">
                     <label class="form-label small fw-semibold">{{ field.label }}</label>
                     {{ field }}

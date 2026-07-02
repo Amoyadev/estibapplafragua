@@ -30,6 +30,7 @@ from .forms import (
     ETAForm,
     MovimientoManualForm,
     PatioUbicacionForm,
+    RegistroConductorForm,
 )
 from .models import (
     AgentePortuario,
@@ -47,6 +48,7 @@ from .models import (
     FLUJO_ETA,
     FLUJO_PASOS,
     Movimiento,
+    RegistroConductor,
 )
 from .permissions import (
     AdminOCoordinador,
@@ -286,7 +288,7 @@ class ConductorDetalle(AdminOCoordinador, DetailView):
         etas_proximas = (
             ETA.objects.filter(conductor=conductor)
             .exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
-            .select_related("cliente", "contenedor", "camion")
+            .select_related("cliente", "contenedor", "tracto")
             .order_by("fecha_retiro", "hora_retiro")[:20]
         )
 
@@ -315,6 +317,9 @@ class ConductorDetalle(AdminOCoordinador, DetailView):
             .dates("fecha", "month", order="DESC")
         )
 
+        # Registros del conductor (log: combustible, infracciones, km, servicio)
+        registros = RegistroConductor.objects.filter(conductor=conductor).order_by("-fecha")[:20]
+
         ctx["dias_strip"]      = dias
         ctx["etas_proximas"]   = etas_proximas
         ctx["dias_libres"]     = dias_libres
@@ -322,6 +327,8 @@ class ConductorDetalle(AdminOCoordinador, DetailView):
         ctx["mes_actual"]      = f"{anio}-{mes_num:02d}"
         ctx["mes_inicio"]      = mes_inicio
         ctx["meses_con_datos"] = meses_con_datos
+        ctx["registros"]       = registros
+        ctx["registro_form"]   = RegistroConductorForm()
         return ctx
 
 
@@ -370,6 +377,23 @@ def conductor_toggle_dia_libre(request, pk):
                 if created:
                     creados += 1
             messages.success(request, f"{creados} día(s) libre(s) registrado(s).")
+    return redirect("operaciones:conductor_detalle", pk=pk)
+
+
+def conductor_agregar_registro(request, pk):
+    """Agrega un registro (log) al conductor. POST only."""
+    if not en_grupos(request.user, [ROL_ADMIN, ROL_COORDINADOR]):
+        return redirect("login")
+    conductor = get_object_or_404(Conductor, pk=pk)
+    if request.method == "POST":
+        form = RegistroConductorForm(request.POST)
+        if form.is_valid():
+            registro = form.save(commit=False)
+            registro.conductor = conductor
+            registro.save()
+            messages.success(request, "Registro guardado correctamente.")
+        else:
+            messages.error(request, "Formulario con errores — revisa los campos.")
     return redirect("operaciones:conductor_detalle", pk=pk)
 
 
@@ -498,12 +522,11 @@ def _notificar_cliente(eta, estado):
         return
     try:
         send_mail(
-            subject=f"[Estibapp] ETA {eta.numero} → {eta.get_estado_display()}",
+            subject=f"[Estibapp] Op. {eta.numero} · {eta.contenedor.codigo} → {eta.get_estado_display()}",
             message=(
                 f"Estimado/a {eta.cliente.nombre},\n\n"
-                f"Su solicitud (ETA {eta.numero}) cambió al estado: "
-                f"{eta.get_estado_display()}.\n\n"
-                f"Contenedor: {eta.contenedor.codigo}\n"
+                f"Su operación N° {eta.numero} (contenedor {eta.contenedor.codigo}) "
+                f"cambió al estado: {eta.get_estado_display()}.\n\n"
                 f"Saludos,\nEstibapp"
             ),
             from_email=None,
@@ -546,7 +569,7 @@ def _avanzar_eta(eta, usuario):
 
 
 class ETAList(CualquierRol, ListView):
-    """Vista máster: todas las ETAs con filtros por estado, texto y mes."""
+    """Vista máster: todas las operaciones con filtros por estado, texto y mes."""
 
     model = ETA
     template_name = "operaciones/eta_lista.html"
@@ -626,11 +649,11 @@ class ETADetail(CualquierRol, DetailView):
         ctx["estados_flujo"] = estados_flujo
         # Para el stepper visual y el bloque camión/conductor en movimiento manual
         ctx["flujo_pasos"] = FLUJO_PASOS
-        ctx["camiones"] = Camion.objects.all().order_by("patente")
-        # Conductores activos con información de disponibilidad para la fecha de retiro
-        conductores_qs = Conductor.objects.filter(
-            estado=Conductor.Estado.ACTIVO
-        ).select_related("empresa").order_by("nombre")
+        from apps.flota.models import Tracto
+        ctx["camiones"] = Tracto.objects.all().order_by("patente")
+        # Todos los conductores con su disponibilidad (el dropdown muestra disponibles arriba,
+        # no disponibles al final sin poder seleccionarlos libremente).
+        conductores_qs = Conductor.objects.select_related("empresa").order_by("nombre")
         fecha_ref = self.object.fecha_retiro or timezone.now().date()
         conductores_info = []
         for c in conductores_qs:
@@ -694,11 +717,11 @@ class ETACreate(AdminOCoordinador, CreateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["titulo"] = "Nueva ETA"
+        ctx["titulo"] = "Nueva operación"
         return ctx
 
     def form_valid(self, form):
-        messages.success(self.request, "ETA creada en estado SOLICITADO.")
+        messages.success(self.request, "Operación creada en estado SOLICITADO.")
         return super().form_valid(form)
 
     def get_success_url(self):
@@ -712,7 +735,7 @@ class ETAUpdate(AdminOCoordinador, UpdateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["titulo"] = f"Editar ETA {self.object.numero}"
+        ctx["titulo"] = f"Editar operación {self.object.numero}"
         return ctx
 
     def get_success_url(self):
@@ -727,9 +750,9 @@ def eta_avanzar(request, pk):
     if request.method == "POST":
         nuevo = _avanzar_eta(eta, request.user)
         if nuevo:
-            messages.success(request, f"ETA avanzada a {eta.get_estado_display()}.")
+            messages.success(request, f"Operación avanzada a {eta.get_estado_display()}.")
         else:
-            messages.info(request, "La ETA ya está en el último estado del ciclo.")
+            messages.info(request, "La operación ya está en el último estado del ciclo.")
     return redirect("operaciones:eta_detalle", pk=pk)
 
 
@@ -790,12 +813,13 @@ def eta_movimiento_manual(request, pk):
         if not camion_id or not conductor_id:
             messages.error(request, "Este paso requiere asignar camión y conductor.")
             return redirect("operaciones:eta_detalle", pk=pk)
+        from apps.flota.models import Tracto
         try:
-            eta.camion    = Camion.objects.get(pk=camion_id)
+            eta.tracto    = Tracto.objects.get(pk=camion_id)
             eta.conductor = Conductor.objects.get(pk=conductor_id)
-            eta.save(update_fields=["camion", "conductor", "actualizado"])
-        except (Camion.DoesNotExist, Conductor.DoesNotExist):
-            messages.error(request, "Camión o conductor no encontrado.")
+            eta.save(update_fields=["tracto", "conductor", "actualizado"])
+        except (Tracto.DoesNotExist, Conductor.DoesNotExist):
+            messages.error(request, "Tracto o conductor no encontrado.")
             return redirect("operaciones:eta_detalle", pk=pk)
 
     contenedor = eta.contenedor
@@ -824,7 +848,7 @@ def eta_movimiento_manual(request, pk):
         )
 
     _notificar_cliente(eta, eta.estado)
-    messages.success(request, f"Movimiento registrado. ETA en «{eta.get_estado_display()}».")
+    messages.success(request, f"Movimiento registrado. Operación en «{eta.get_estado_display()}».")
     return redirect("operaciones:eta_detalle", pk=pk)
 
 
@@ -834,11 +858,12 @@ def eta_asignar_transporte(request, pk):
         return redirect("login")
     eta = get_object_or_404(ETA, pk=pk)
     if request.method == "POST":
+        from apps.flota.models import Tracto
         camion_id    = request.POST.get("camion_id", "").strip()
         conductor_id = request.POST.get("conductor_id", "").strip()
-        eta.camion    = Camion.objects.filter(pk=camion_id).first() if camion_id else None
+        eta.tracto    = Tracto.objects.filter(pk=camion_id).first() if camion_id else None
         eta.conductor = Conductor.objects.filter(pk=conductor_id).first() if conductor_id else None
-        eta.save(update_fields=["camion", "conductor", "actualizado"])
+        eta.save(update_fields=["tracto", "conductor", "actualizado"])
         messages.success(request, "Transporte actualizado.")
     return redirect("operaciones:eta_detalle", pk=pk)
 
@@ -870,7 +895,7 @@ def eta_cambiar_estado(request, pk):
             and _avanzar_eta(eta, request.user) is not None
         ):
             pass
-        messages.success(request, f"ETA movida a «{eta.get_estado_display()}».")
+        messages.success(request, f"Operación movida a «{eta.get_estado_display()}».")
     return redirect("operaciones:eta_detalle", pk=pk)
 
 
@@ -923,7 +948,7 @@ class TableroPatio(AdminOPatio, ListView):
                 ETA.EstadoCiclo.EN_PATIO,
                 ETA.EstadoCiclo.ALMACENADO,
             ]
-        ).select_related("cliente", "contenedor", "conductor", "camion")
+        ).select_related("cliente", "contenedor", "conductor", "tracto")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -1060,7 +1085,7 @@ class TableroOperativo(CualquierRol, TemplateView):
         for e in list(retiros) + list(entregas):
             if e.conductor_id:
                 conductores[e.conductor_id] = e.conductor.estado
-        cond_activos = sum(1 for v in conductores.values() if v == Conductor.Estado.ACTIVO)
+        cond_activos = sum(1 for v in conductores.values() if v == Conductor.Estado.DISPONIBLE)
         cond_inop = len(conductores) - cond_activos
 
         clientes_dia = {e.cliente_id for e in list(retiros) + list(entregas)}
@@ -1193,8 +1218,8 @@ class RetiroDespacho(CualquierRol, TemplateView):
                 conductor=c
             ).exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
             patente = (
-                etas_c.exclude(camion__isnull=True)
-                .values_list("camion__patente", flat=True)
+                etas_c.exclude(tracto__isnull=True)
+                .values_list("tracto__patente", flat=True)
                 .first()
             )
             conductores_lista.append({
@@ -1214,7 +1239,7 @@ class RetiroDespacho(CualquierRol, TemplateView):
                 ahora = timezone.localtime(timezone.now())
                 conductor_sel = ConductorModel.objects.select_related("empresa").get(pk=conductor_id)
                 etas_sel = (
-                    ETA.objects.select_related("camion", "cliente", "contenedor")
+                    ETA.objects.select_related("tracto", "cliente", "contenedor")
                     .filter(conductor=conductor_sel)
                     .exclude(estado=ETA.EstadoCiclo.DESPACHADO_PUERTO)
                     .order_by("fecha_retiro", "hora_retiro", "fecha")
@@ -1409,7 +1434,7 @@ class ReporteCliente(SoloAdmin, ReportesContextMixin, ListView):
         self.cliente = get_object_or_404(Cliente, pk=self.kwargs["pk"])
         qs = (
             ETA.objects.filter(cliente=self.cliente)
-            .select_related("cliente", "agente", "contenedor", "conductor", "camion")
+            .select_related("cliente", "agente", "contenedor", "conductor", "tracto")
             .order_by("-fecha")
         )
         estado = self.request.GET.get("estado")
@@ -1534,7 +1559,7 @@ def exportar_csv(request, tipo):
         return HttpResponse("Reporte no válido", status=404)
 
     etas = ETA.objects.filter(estado__in=estados).select_related(
-        "cliente", "agente", "contenedor", "conductor", "camion"
+        "cliente", "agente", "contenedor", "conductor", "tracto"
     )
 
     response = HttpResponse(content_type="text/csv")
@@ -1542,7 +1567,7 @@ def exportar_csv(request, tipo):
     response.write("\ufeff")  # BOM para Excel (acentos correctos)
     writer = csv.writer(response, delimiter=";")
     writer.writerow(
-        ["ETA", "Cliente", "Agente", "Contenedor", "Conductor", "Camion",
+        ["Contenedor", "N° Operación", "Cliente", "Agente", "Conductor", "Camion",
          "Deposito", "Fecha", "Estado"]
     )
     for e in etas:
@@ -1552,7 +1577,7 @@ def exportar_csv(request, tipo):
             e.agente.nombre,
             e.contenedor.codigo,
             e.conductor.nombre if e.conductor else "",
-            e.camion.patente if e.camion else "",
+            e.tracto.patente if e.tracto else "",
             e.deposito,
             e.fecha.isoformat(),
             e.get_estado_display(),

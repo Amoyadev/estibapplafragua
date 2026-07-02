@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% load op_extras %}
-{% block title %}ETAs — Estibapp{% endblock %}
+{% block title %}Operaciones — Estibapp{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">ETAs — Vista máster</h3>
+    <h3 class="mb-0">Operaciones — Vista máster</h3>
     {% if user|en_grupo:"Administrador,Coordinador" %}
-    <a href="{% url 'operaciones:eta_crear' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Nueva ETA</a>
+    <a href="{% url 'operaciones:eta_crear' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Nueva operación</a>
     {% endif %}
 </div>
 
 <form method="get" class="row g-2 mb-3 align-items-end">
     <div class="col-md-3">
-        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar nº ETA, cliente o contenedor…">
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar N° operación, cliente o contenedor…">
     </div>
     <div class="col-md-3">
         <select name="estado" class="form-select">
@@ -44,17 +44,17 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th>ETA</th><th>Cliente</th><th>Agente</th><th>Contenedor</th>
+                    <th>Contenedor</th><th>N° Op.</th><th>Cliente</th><th>Agente</th>
                     <th>Fecha</th><th>Tipo</th><th>Estado</th><th></th>
                 </tr>
             </thead>
             <tbody>
             {% for eta in etas %}
                 <tr>
-                    <td class="fw-semibold">{{ eta.numero }}</td>
+                    <td><span class="badge bg-secondary font-monospace">{{ eta.contenedor.codigo }}</span></td>
+                    <td class="fw-semibold small">{{ eta.numero }}</td>
                     <td>{{ eta.cliente.nombre }}</td>
                     <td>{{ eta.agente.sigla|default:eta.agente.nombre }}</td>
-                    <td><span class="badge bg-secondary">{{ eta.contenedor.codigo }}</span></td>
                     <td class="small text-muted">{{ eta.fecha|date:"d/m/Y" }}</td>
                     <td><span class="small text-muted">{{ eta.get_tipo_proceso_display }}</span></td>
                     <td><span class="badge bg-info text-dark">{{ eta.get_estado_display }}</span></td>
@@ -63,7 +63,7 @@
             {% empty %}
                 <tr><td colspan="8" class="text-muted text-center py-4">
                     <i class="bi bi-inbox d-block fs-3 mb-1 opacity-50"></i>
-                    No hay ETAs que coincidan con los filtros.
+                    No hay operaciones que coincidan con los filtros.
                 </td></tr>
             {% endfor %}
             </tbody>
@@ -73,7 +73,7 @@
     {# Paginación #}
     {% if is_paginated %}
     <div class="card-footer bg-white d-flex justify-content-between align-items-center small">
-        <span class="text-muted">{{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ paginator.count }} ETAs</span>
+        <span class="text-muted">{{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ paginator.count }} operaciones</span>
         <nav>
             <ul class="pagination pagination-sm mb-0">
                 {% if page_obj.has_previous %}

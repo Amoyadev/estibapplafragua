@@ -73,8 +73,10 @@ class Conductor(TimeStampedModel):
     """Conductor del camión que mueve el contenedor."""
 
     class Estado(models.TextChoices):
-        ACTIVO = "ACTIVO", "Activo"
-        INOPERATIVO = "INOPERATIVO", "Inoperativo"
+        DISPONIBLE = "DISPONIBLE", "Disponible"
+        EN_RUTA    = "EN_RUTA",    "En ruta"
+        DESCANSO   = "DESCANSO",   "Descanso"
+        LICENCIA   = "LICENCIA",   "Licencia"
 
     nombre = models.CharField(max_length=150)
     empresa = models.ForeignKey(
@@ -85,13 +87,19 @@ class Conductor(TimeStampedModel):
         related_name="conductores",
         help_text="Empresa de transporte a la que pertenece el conductor.",
     )
-    rut = models.CharField("RUT", max_length=15, blank=True)
+    rut      = models.CharField("RUT", max_length=15, blank=True)
+    licencia = models.CharField("Licencia", max_length=20, blank=True,
+                                help_text="N° de licencia de conducir.")
+    fecha_vencimiento_licencia = models.DateField(
+        "Vto. licencia", null=True, blank=True,
+        help_text="Fecha de vencimiento de la licencia."
+    )
     telefono = models.CharField(max_length=30, blank=True)
     estado = models.CharField(
         max_length=12,
         choices=Estado.choices,
-        default=Estado.ACTIVO,
-        help_text="Disponibilidad operativa del conductor (Activo / Inoperativo).",
+        default=Estado.DISPONIBLE,
+        help_text="Estado operativo del conductor.",
     )
 
     class Meta:
@@ -102,6 +110,38 @@ class Conductor(TimeStampedModel):
     def __str__(self):
         # Formato "Nombre — Empresa" para identificar de un vistazo en las listas.
         return f"{self.nombre} — {self.empresa}" if self.empresa else self.nombre
+
+
+class RegistroConductor(TimeStampedModel):
+    """Log genérico de eventos del conductor (combustible, infracción, km, servicio)."""
+
+    class Tipo(models.TextChoices):
+        COMBUSTIBLE = "COMBUSTIBLE", "Carga de combustible"
+        INFRACCION  = "INFRACCION",  "Infracción"
+        KILOMETRAJE = "KM",          "Registro de km"
+        SERVICIO    = "SERVICIO",    "Servicio / mantención"
+        OTRO        = "OTRO",        "Otro"
+
+    conductor = models.ForeignKey(
+        Conductor,
+        on_delete=models.CASCADE,
+        related_name="registros",
+    )
+    tipo        = models.CharField(max_length=15, choices=Tipo.choices)
+    fecha       = models.DateField()
+    descripcion = models.TextField(blank=True)
+    valor       = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Valor numérico asociado (litros, km, monto de multa, etc.)."
+    )
+
+    class Meta:
+        verbose_name = "Registro de conductor"
+        verbose_name_plural = "Registros de conductores"
+        ordering = ["-fecha", "-creado"]
+
+    def __str__(self):
+        return f"{self.conductor.nombre} — {self.get_tipo_display()} ({self.fecha})"
 
 
 class DiaLibre(TimeStampedModel):
@@ -129,9 +169,17 @@ def conductor_disponible(conductor, fecha):
     """
     Retorna (disponible: bool, motivo: str).
     Un conductor NO está disponible si:
+      - Su estado no es DISPONIBLE (en ruta, descanso, licencia).
       - Tiene un DiaLibre registrado para esa fecha.
-      - Tiene una ETA activa (no DESPACHADO_PUERTO) con fecha_retiro = esa fecha.
+      - Tiene una operación activa (no DESPACHADO_PUERTO) con fecha_retiro = esa fecha.
     """
+    _motivos_estado = {
+        Conductor.Estado.EN_RUTA:  "en ruta",
+        Conductor.Estado.DESCANSO: "en descanso",
+        Conductor.Estado.LICENCIA: "con licencia",
+    }
+    if conductor.estado != Conductor.Estado.DISPONIBLE:
+        return False, _motivos_estado.get(conductor.estado, "no disponible")
     if DiaLibre.objects.filter(conductor=conductor, fecha=fecha).exists():
         return False, "día libre"
     if ETA.objects.filter(
@@ -143,14 +191,19 @@ def conductor_disponible(conductor, fecha):
 
 
 class Camion(TimeStampedModel):
-    """Camión identificado por patente."""
+    """
+    DEPRECADO — se mantiene solo para compatibilidad con migraciones antiguas.
+    Usar apps.flota.Tracto en su lugar. Esta clase apunta a la misma tabla
+    que Tracto (operaciones_camion) y se eliminará en una migración posterior.
+    """
 
     patente = models.CharField(max_length=10, unique=True)
     marca = models.CharField(max_length=60, blank=True)
 
     class Meta:
-        verbose_name = "Camión"
-        verbose_name_plural = "Camiones"
+        db_table = "operaciones_camion"
+        verbose_name = "Camión (deprecado)"
+        verbose_name_plural = "Camiones (deprecados)"
         ordering = ["patente"]
 
     def __str__(self):
@@ -239,7 +292,7 @@ class ETA(TimeStampedModel):
         OFF_TIME = "OFF_TIME", "Off time"
         SIN_LLEGADA = "SIN_LLEGADA", "Sin llegada"
 
-    numero = models.CharField("N° ETA", max_length=30, unique=True)
+    numero = models.CharField("N° Operación", max_length=30, unique=True)
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="etas")
     agente = models.ForeignKey(
         AgentePortuario, on_delete=models.PROTECT, related_name="etas"
@@ -250,8 +303,19 @@ class ETA(TimeStampedModel):
     conductor = models.ForeignKey(
         Conductor, on_delete=models.SET_NULL, null=True, blank=True, related_name="etas"
     )
+    # `tracto` reemplaza a `camion`. FK a flota.Tracto (misma tabla operaciones_camion).
+    tracto = models.ForeignKey(
+        "flota.Tracto",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="etas",
+        verbose_name="Tracto",
+    )
+    # `camion` se mantiene temporalmente; se eliminará en migración 0009.
     camion = models.ForeignKey(
-        Camion, on_delete=models.SET_NULL, null=True, blank=True, related_name="etas"
+        Camion, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="etas_legacy",
     )
 
     deposito = models.CharField(max_length=120, blank=True, help_text="Ej. Casablanca")
@@ -316,12 +380,13 @@ class ETA(TimeStampedModel):
     )
 
     class Meta:
-        verbose_name = "ETA"
-        verbose_name_plural = "ETAs"
+        verbose_name = "Operación"
+        verbose_name_plural = "Operaciones"
         ordering = ["-fecha", "-creado"]
 
     def __str__(self):
-        return f"ETA {self.numero} · {self.cliente}"
+        codigo = self.contenedor.codigo if self.contenedor_id else "—"
+        return f"Op. {self.numero} · {codigo}"
 
     def estado_siguiente(self):
         """Devuelve el siguiente estado del ciclo, o None si es el último.

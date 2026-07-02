@@ -20,7 +20,7 @@
     <div class="col-6 col-md-3">
         <div class="card h-100" style="border-top:3px solid #CC0000;">
             <div class="card-body text-center">
-                <div class="small text-muted">Total ETAs</div>
+                <div class="small text-muted">Total operaciones</div>
                 <div class="fs-2 fw-bold" style="color:#2c2c3a;">{{ total_etas }}</div>
             </div>
         </div>
@@ -47,7 +47,7 @@
                 <div class="small text-secondary mb-1">Acción rápida</div>
                 {% if es_admin or es_coordinador %}
                 <a href="{% url 'operaciones:eta_crear' %}" class="btn btn-sm mt-1"
-                   style="background:#CC0000;border-color:#990000;color:#fff;">+ Nueva ETA</a>
+                   style="background:#CC0000;border-color:#990000;color:#fff;">+ Nueva operación</a>
                 {% else %}
                 <a href="{% url 'operaciones:patio' %}" class="btn btn-sm mt-1"
                    style="background:#CC0000;border-color:#990000;color:#fff;">Ir a patio</a>
@@ -63,7 +63,7 @@
         <div class="card h-100">
             <div class="card-header fw-semibold">
                 Actividad
-                <span class="badge ms-2" style="background:#2c2c3a;font-weight:400;">{{ etas_periodo_count }} ETA{{ etas_periodo_count|pluralize:"s" }} en el período</span>
+                <span class="badge ms-2" style="background:#2c2c3a;font-weight:400;">{{ etas_periodo_count }} operaci{{ etas_periodo_count|pluralize:"ón,ones" }} en el período</span>
             </div>
             <div class="card-body">
                 <canvas id="cActividad" height="90"></canvas>
@@ -80,26 +80,26 @@
     </div>
 </div>
 
-<!-- ETAs recientes -->
+<!-- Operaciones recientes -->
 <div class="card">
     <div class="card-header d-flex justify-content-between">
-        <span>ETAs recientes</span>
+        <span>Operaciones recientes</span>
         <a href="{% url 'operaciones:eta_list' %}" class="small">Ver todas</a>
     </div>
     <div class="table-responsive">
         <table class="table table-sm mb-0 align-middle">
-            <thead><tr><th>ETA</th><th>Cliente</th><th>Contenedor</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Contenedor</th><th>N° Op.</th><th>Cliente</th><th>Estado</th><th></th></tr></thead>
             <tbody>
             {% for eta in etas_recientes %}
                 <tr>
-                    <td class="font-monospace">{{ eta.numero }}</td>
+                    <td><span class="badge bg-secondary font-monospace">{{ eta.contenedor.codigo }}</span></td>
+                    <td class="font-monospace small">{{ eta.numero }}</td>
                     <td>{{ eta.cliente.nombre }}</td>
-                    <td>{{ eta.contenedor.codigo }}</td>
                     <td><span class="badge bg-secondary badge-estado">{{ eta.get_estado_display }}</span></td>
                     <td><a href="{% url 'operaciones:eta_detalle' eta.pk %}" class="btn btn-sm btn-outline-primary">Ver</a></td>
                 </tr>
             {% empty %}
-                <tr><td colspan="5" class="text-muted text-center py-3">Sin ETAs aún.</td></tr>
+                <tr><td colspan="5" class="text-muted text-center py-3">Sin operaciones aún.</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -125,7 +125,7 @@
             data: {
                 labels: ACT.labels,
                 datasets: [{
-                    label: "ETAs",
+                    label: "Operaciones",
                     data: ACT.data,
                     backgroundColor: "rgba(204,0,0,.7)",
                     borderColor: "#990000",

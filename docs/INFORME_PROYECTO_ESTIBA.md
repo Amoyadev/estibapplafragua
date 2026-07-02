@@ -561,3 +561,512 @@ docker-compose up -d --no-build
 ## 15. Conclusión
 
 **Estibapp** transforma la operación de un depósito portuario basada en planillas en una plataforma trazable, con pantallas por perfil y arquitectura moderna (**Django · PostgreSQL · Docker · Nginx**), enfocada en simplicidad operativa y crecimiento hacia el dimensionamiento de espacios en Fase 2.
+
+---
+
+## 16. Registro de incidentes en producción
+
+### INCIDENTE-01 — Contenedores Docker en estado `Created` (01 Jul 2026)
+
+**Síntoma:** La app dejó de responder. Los contenedores `estiba_web` y `estiba_nginx` estaban en estado `Created` — creados pero nunca iniciados. Solo `estiba_db` (PostgreSQL) seguía corriendo.
+
+**Causa:** Se ejecutó `docker-compose up --build` y el proceso se interrumpió antes de que los contenedores arrancaran completamente. El `restart: unless-stopped` del compose **no aplica a contenedores en estado `Created`**, solo a los que se detienen después de haber corrido al menos una vez. Adicionalmente, el disco saltó de 6% a 52% porque el build generó imágenes nuevas sin limpiar las anteriores.
+
+**Solución aplicada:**
+```bash
+cd /opt/estiba-app
+docker-compose up -d
+```
+
+**Lección:** Siempre usar `-d` (detached) en producción. Sin él, cerrar la terminal deja los contenedores sin arrancar o los baja. Después de cualquier build verificar con `docker-compose ps`.
+
+---
+
+## 17. Checklist de producción — aplicar antes de lanzar con clientes reales
+
+### 17.1 Servicio systemd para auto-arranque
+
+Garantiza que la app levante automáticamente si el servidor se reinicia.
+
+Crear `/etc/systemd/system/estiba.service`:
+
+```ini
+[Unit]
+Description=EstibAPP
+Requires=docker.service
+After=docker.service
+
+[Service]
+WorkingDirectory=/opt/estiba-app
+ExecStart=/usr/bin/docker-compose up
+ExecStop=/usr/bin/docker-compose down
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Activar:
+```bash
+systemctl enable estiba
+systemctl start estiba
+```
+
+### 17.2 Limpiar imágenes huérfanas después de cada build
+
+```bash
+docker image prune -f
+```
+
+### 17.3 Monitor de uptime externo
+
+Configurar [UptimeRobot](https://uptimerobot.com) (gratuito) sobre `https://estibapplafragua.cl`. Revisa cada 5 minutos y avisa por correo o WhatsApp si la app cae.
+
+### 17.4 Protocolo de deploy en producción
+
+Siempre usar `-d` (detached) al hacer builds:
+```bash
+docker-compose up -d --build
+docker-compose ps
+```
+
+---
+
+## 18. Feature-01 / 2026 — Conductores enriquecidos, módulo de flota y renombramiento operacional
+
+> **Fecha de solicitud:** 01/07/2026 · **Solicitante:** Stakeholder · **Estado:** Análisis y decisiones de arquitectura aprobadas — pendiente de implementación en rama `develop`
+
+---
+
+### 18.1 Qué problema resuelve
+
+El sistema actual tiene tres brechas operativas concretas:
+
+**Brecha 1 — Conductores como dato, no como recurso.**
+El modelo `Conductor` actual solo guarda nombre, RUT y teléfono. No hay historial de actividad (km recorridos, cargas de combustible, infracciones), no hay licencia registrada ni su vencimiento, y el estado es binario (Activo/Inoperativo) cuando la operación real tiene estados más granulares (En ruta, Descanso, Licencia médica). El coordinador no puede ver a simple vista si un conductor tiene la licencia vigente o cuántos km lleva en el mes.
+
+**Brecha 2 — Flota sin ficha técnica.**
+El modelo `Camion` tiene solo `patente` y `marca`. No hay distinción entre tracto y semi remolque (son equipos distintos con distintas responsabilidades y documentación). No se registran VIN, motor, odómetro, horómetro, ni vencimientos de seguro, permiso de circulación o revisión técnica. Hoy no existe forma de saber en la plataforma qué equipos tienen documentos vencidos.
+
+**Brecha 3 — Lenguaje interno desalineado con la operación.**
+El término "ETA" (Estimated Time of Arrival) es un concepto portuario de llegada de nave, no de gestión de operaciones de contenedor. El equipo de Doña Blanca en estibapplafragua habla de "operaciones" y el protagonista real es el contenedor. Tener "ETA #2847" como identificador central desplaza visualmente al contenedor que es lo que se mueve, almacena y despacha.
+
+---
+
+### 18.2 Decisiones de arquitectura aprobadas
+
+Estas decisiones fueron analizadas y confirmadas antes de implementar. No se cambian sin consenso.
+
+| # | Decisión | Opción elegida | Razón |
+|---|---|---|---|
+| D1 | ¿Dónde viven Tracto y SemiRemolque? | Nueva app `apps/flota/` | `apps/operaciones/` gestiona el flujo del contenedor. Mezclar gestión de activos de flota en el mismo módulo une dos dominios distintos en un solo `models.py`. Con `flota/` separado, agregar mantenimientos, inspecciones o alertas de vencimiento en el futuro no requiere tocar el código del ciclo operacional. |
+| D2 | ¿Qué pasa con el modelo `Camion`? | Renombrar a `Tracto` con migración + `db_table` alias | El término "Camión" es ambiguo. "Tracto" es el término correcto para el equipo tractor. La tabla en PostgreSQL se mantiene como `operaciones_camion` mediante `Meta.db_table` para que las migraciones existentes no se rompan. El FK `ETA.camion` se actualiza a `ETA.tracto` con una migración de renombrado de columna. |
+| D3 | ¿Cómo se registra la actividad del conductor? | `RegistroConductor` genérico con campo `tipo` | Un modelo único con un campo `tipo` (discriminador) actúa como log de eventos del conductor. Evita crear 4 tablas para MVP cuando los campos básicos son los mismos (fecha, valor numérico, descripción). Cuando un tipo de registro necesite campos propios (ej. infracciones con N° de parte y tribunal), se crea el modelo específico y se migran solo los registros de ese tipo. |
+| D4 | ¿SemiRemolque se asigna en operaciones? | No en MVP — solo inventario de flota | Por ahora el semi remolque se gestiona como activo de inventario con estado y ficha técnica. La asignación a una operación requiere agregar un FK en `ETA` y UI adicional. Se deja como Fase 2 de flota. |
+| D5 | ¿Cómo se renombra ETA en la UI? | Solo cambio de etiquetas visibles — el código Python no cambia | Renombrar la clase `ETA` en Python implicaría reescribir todas las migraciones, referencias en `views.py`, `forms.py`, URLs y el ORM. El costo supera el beneficio. Se cambia únicamente lo que el usuario ve: `verbose_name`, `__str__`, textos en templates y títulos de vistas. Las URLs y variables de contexto mantienen `eta` internamente. |
+
+---
+
+### 18.3 Cambios en `apps/operaciones/` — Conductor
+
+#### 18.3.1 Modelo `Conductor` (ampliación)
+
+Archivo: `apps/operaciones/models.py`
+
+**Estado actual:**
+```python
+class Conductor(TimeStampedModel):
+    class Estado(models.TextChoices):
+        ACTIVO      = "ACTIVO",      "Activo"
+        INOPERATIVO = "INOPERATIVO", "Inoperativo"
+
+    nombre  = models.CharField(max_length=150)
+    empresa = models.ForeignKey("Empresa", ...)
+    rut     = models.CharField(max_length=15, blank=True)
+    telefono = models.CharField(max_length=30, blank=True)
+    estado  = models.CharField(max_length=12, choices=Estado.choices, default=Estado.ACTIVO)
+```
+
+**Estado objetivo:**
+```python
+class Conductor(TimeStampedModel):
+    class Estado(models.TextChoices):
+        DISPONIBLE = "DISPONIBLE", "Disponible"
+        EN_RUTA    = "EN_RUTA",    "En ruta"
+        DESCANSO   = "DESCANSO",   "Descanso"
+        LICENCIA   = "LICENCIA",   "Licencia"
+
+    nombre                    = models.CharField(max_length=150)
+    empresa                   = models.ForeignKey("Empresa", ...)
+    rut                       = models.CharField("RUT", max_length=15, blank=True)
+    licencia                  = models.CharField("N° de licencia", max_length=30, blank=True)
+    fecha_vencimiento_licencia = models.DateField("Vencimiento licencia", null=True, blank=True)
+    telefono                  = models.CharField(max_length=30, blank=True)
+    estado                    = models.CharField(
+        max_length=12, choices=Estado.choices, default=Estado.DISPONIBLE
+    )
+```
+
+**Impacto de migración:**
+- Los registros actuales con `estado = "ACTIVO"` se migran a `"DISPONIBLE"` vía `RunPython` en la migración.
+- Los registros con `estado = "INOPERATIVO"` se migran a `"DESCANSO"` (valor más neutro y cercano al concepto).
+- La función `conductor_disponible()` ya existente se actualiza: un conductor con `estado != DISPONIBLE` queda excluido del dropdown de asignación sin necesidad de revisar `DiaLibre`.
+
+#### 18.3.2 Nuevo modelo `RegistroConductor`
+
+Archivo: `apps/operaciones/models.py`
+
+```python
+class RegistroConductor(TimeStampedModel):
+    """
+    Log de eventos operativos vinculados a un conductor.
+    Tipo actúa como discriminador. Un modelo único para MVP;
+    evolucionable a modelos especializados por tipo cuando
+    los campos diverjan (ej. infracciones con N° de parte).
+    """
+    class Tipo(models.TextChoices):
+        COMBUSTIBLE = "COMBUSTIBLE", "Carga de combustible"
+        INFRACCION  = "INFRACCION",  "Infracción"
+        KM          = "KM",          "Km recorridos"
+        SERVICIO    = "SERVICIO",    "Servicio realizado"
+
+    conductor   = models.ForeignKey(
+        Conductor, on_delete=models.CASCADE, related_name="registros"
+    )
+    tipo        = models.CharField(max_length=15, choices=Tipo.choices)
+    fecha       = models.DateField()
+    valor       = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Litros (combustible), monto (infracción), km (recorridos)."
+    )
+    descripcion = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name        = "Registro de conductor"
+        verbose_name_plural = "Registros de conductor"
+        ordering            = ["-fecha", "-creado"]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · {self.conductor.nombre} · {self.fecha}"
+```
+
+#### 18.3.3 Formularios afectados
+
+Archivo: `apps/operaciones/forms.py`
+
+- `ConductorForm`: agregar campos `licencia`, `fecha_vencimiento_licencia`. El campo `estado` cambia sus choices a los nuevos valores.
+- Nuevo `RegistroConductorForm`: campos `tipo`, `fecha`, `valor`, `descripcion`.
+
+#### 18.3.4 Vistas afectadas
+
+Archivo: `apps/operaciones/views.py`
+
+- `ConductorDetalle`: agregar al contexto los registros del conductor agrupados por tipo (`registros_combustible`, `registros_infracciones`, etc. o un queryset único filtrable en template).
+- Nueva vista `RegistroConductorCreate`: form para agregar un registro desde el perfil del conductor.
+- `conductor_disponible()`: ampliar la función para excluir conductores con `estado != DISPONIBLE` además de los que tienen `DiaLibre`.
+
+#### 18.3.5 Templates afectados
+
+- `conductor_detalle.html`: agregar sección de ficha (licencia + vencimiento con alerta visual si está próximo a vencer), sección de registros de actividad con tabla filtrable por tipo.
+
+---
+
+### 18.4 Nueva app `apps/flota/`
+
+#### 18.4.1 Estructura de archivos a crear
+
+```
+apps/flota/
+├── __init__.py
+├── apps.py                  # FlotaConfig, name = "apps.flota"
+├── models.py                # Tracto, SemiRemolque
+├── forms.py                 # TractoForm, SemiRemolqueForm
+├── views.py                 # CRUD Tracto + SemiRemolque
+├── urls.py                  # Rutas propias de flota
+├── admin.py                 # Registro en Django admin
+├── migrations/
+│   └── __init__.py
+└── templates/flota/
+    ├── tracto_lista.html
+    ├── tracto_detalle.html
+    ├── tracto_form.html
+    ├── semi_lista.html
+    └── semi_form.html
+```
+
+Registrar en `config/settings/base.py`:
+```python
+INSTALLED_APPS = [
+    ...
+    "apps.flota",
+]
+```
+
+Incluir URLs en `config/urls.py`:
+```python
+path("flota/", include("apps.flota.urls", namespace="flota")),
+```
+
+#### 18.4.2 Modelo `Tracto`
+
+Archivo: `apps/flota/models.py`
+
+```python
+class Tracto(TimeStampedModel):
+    """
+    Camión tractor (tracto). Renombrado desde el modelo Camion de operaciones.
+    La tabla en BD mantiene el nombre operaciones_camion via db_table para
+    no invalidar migraciones existentes. El FK en ETA se actualiza a tracto.
+    """
+    class Estado(models.TextChoices):
+        DISPONIBLE      = "DISPONIBLE",      "Disponible"
+        EN_SERVICIO     = "EN_SERVICIO",     "En servicio"
+        MANTENIMIENTO   = "MANTENIMIENTO",   "Mantenimiento"
+        FUERA_SERVICIO  = "FUERA_SERVICIO",  "Fuera de servicio"
+
+    patente     = models.CharField(max_length=10, unique=True)
+    marca       = models.CharField(max_length=60, blank=True)
+    modelo      = models.CharField(max_length=60, blank=True)
+    anio        = models.PositiveSmallIntegerField("Año", null=True, blank=True)
+    vin         = models.CharField("VIN", max_length=20, blank=True, unique=True,
+                                   help_text="Número de identificación del vehículo.")
+    motor       = models.CharField("N° motor", max_length=30, blank=True)
+    kilometraje = models.PositiveIntegerField(
+        "Kilometraje actual (km)", null=True, blank=True
+    )
+    horometro   = models.DecimalField(
+        "Horómetro (horas)", max_digits=8, decimal_places=1, null=True, blank=True,
+        help_text="Horas de uso del motor. Aplica a equipos que no miden por km."
+    )
+    odometro    = models.PositiveIntegerField(
+        "Odómetro (km)", null=True, blank=True,
+        help_text="Lectura actual del odómetro físico del vehículo."
+    )
+    # Vencimientos de documentación legal
+    seguro_vencimiento      = models.DateField("Vencimiento seguro", null=True, blank=True)
+    permiso_vencimiento     = models.DateField("Vencimiento permiso de circulación", null=True, blank=True)
+    revision_tecnica_vencimiento = models.DateField("Vencimiento revisión técnica", null=True, blank=True)
+
+    estado      = models.CharField(
+        max_length=15, choices=Estado.choices, default=Estado.DISPONIBLE
+    )
+
+    class Meta:
+        verbose_name        = "Tracto"
+        verbose_name_plural = "Tractos"
+        ordering            = ["patente"]
+        db_table            = "operaciones_camion"   # Preserva la tabla existente en BD
+
+    def __str__(self):
+        return f"{self.patente}" + (f" — {self.marca} {self.modelo}" if self.marca else "")
+
+    def documentos_por_vencer(self, dias=30):
+        """Retorna lista de documentos que vencen en los próximos `dias` días."""
+        from datetime import date, timedelta
+        limite = date.today() + timedelta(days=dias)
+        alertas = []
+        if self.seguro_vencimiento and self.seguro_vencimiento <= limite:
+            alertas.append(("Seguro", self.seguro_vencimiento))
+        if self.permiso_vencimiento and self.permiso_vencimiento <= limite:
+            alertas.append(("Permiso circulación", self.permiso_vencimiento))
+        if self.revision_tecnica_vencimiento and self.revision_tecnica_vencimiento <= limite:
+            alertas.append(("Revisión técnica", self.revision_tecnica_vencimiento))
+        return alertas
+```
+
+#### 18.4.3 Modelo `SemiRemolque`
+
+Archivo: `apps/flota/models.py`
+
+```python
+class SemiRemolque(TimeStampedModel):
+    """
+    Semi remolque. Equipo arrastrado por el tracto.
+    En MVP solo se gestiona como inventario con ficha y estado.
+    La asignación a operaciones es Fase 2 de flota.
+    """
+    class Tipo(models.TextChoices):
+        MULTY    = "MULTY",    "Multy"
+        PLANA    = "PLANA",    "Plana"
+        DE_20    = "DE_20",    "De 20'"
+        DE_40    = "DE_40",    "De 40'"
+        OTRO     = "OTRO",     "Otro"
+
+    class Estado(models.TextChoices):
+        DISPONIBLE     = "DISPONIBLE",     "Disponible"
+        EN_SERVICIO    = "EN_SERVICIO",    "En servicio"
+        MANTENIMIENTO  = "MANTENIMIENTO",  "Mantenimiento"
+        FUERA_SERVICIO = "FUERA_SERVICIO", "Fuera de servicio"
+
+    patente = models.CharField(max_length=10, unique=True)
+    tipo    = models.CharField(max_length=10, choices=Tipo.choices, default=Tipo.DE_20)
+    estado  = models.CharField(
+        max_length=15, choices=Estado.choices, default=Estado.DISPONIBLE
+    )
+
+    class Meta:
+        verbose_name        = "Semi remolque"
+        verbose_name_plural = "Semi remolques"
+        ordering            = ["patente"]
+
+    def __str__(self):
+        return f"{self.patente} [{self.get_tipo_display()}]"
+```
+
+#### 18.4.4 Migración de `Camion → Tracto`
+
+Archivo: nueva migración en `apps/flota/migrations/`
+
+La estrategia es:
+1. `apps/flota` importa `Tracto` apuntando a `db_table = "operaciones_camion"` — la tabla ya existe, no se crea de nuevo.
+2. Se agregan las columnas nuevas (`modelo`, `anio`, `vin`, `motor`, `kilometraje`, `horometro`, `odometro`, `seguro_vencimiento`, `permiso_vencimiento`, `revision_tecnica_vencimiento`, `estado`) con `null=True, blank=True` para que la migración no rompa los registros existentes.
+3. En `apps/operaciones`, el FK `ETA.camion` se renombra a `ETA.tracto` con `RenameField` en una migración, actualizando también `related_name`.
+4. El modelo `Camion` en `apps/operaciones/models.py` se elimina una vez validado que `Tracto` funciona correctamente.
+
+```
+Orden de ejecución de migraciones:
+1. apps/flota/0001_initial.py         → crea SemiRemolque; Tracto apunta a tabla existente
+2. apps/flota/0002_tracto_campos.py   → agrega columnas nuevas a operaciones_camion
+3. apps/operaciones/XXXX_rename_camion_fk.py → renombra ETA.camion → ETA.tracto
+```
+
+---
+
+### 18.5 Renombrado operacional: ETA → Operación
+
+#### 18.5.1 Principio
+
+El cambio es estrictamente de **capa de presentación**. El modelo se llama `ETA` en Python, las URLs contienen `eta`, las variables de contexto en vistas se llaman `eta`/`etas`. Nada de eso cambia. Solo cambia lo que el usuario de Doña Blanca ve en pantalla.
+
+**Regla:** si está en un archivo `.py` (modelos, vistas, urls, forms), no se toca el identificador. Si está en un template `.html` como texto visible o en un `verbose_name` / `__str__`, se cambia.
+
+#### 18.5.2 Cambios en `models.py`
+
+```python
+# ANTES
+class ETA(TimeStampedModel):
+    numero = models.CharField("N° ETA", max_length=30, unique=True)
+    class Meta:
+        verbose_name = "ETA"
+        verbose_name_plural = "ETAs"
+    def __str__(self):
+        return f"ETA {self.numero} · {self.cliente}"
+
+# DESPUÉS
+class ETA(TimeStampedModel):
+    numero = models.CharField("N° Operación", max_length=30, unique=True)
+    class Meta:
+        verbose_name = "Operación"
+        verbose_name_plural = "Operaciones"
+    def __str__(self):
+        return f"Op. {self.numero} · {self.contenedor.codigo if self.contenedor_id else '—'}"
+```
+
+#### 18.5.3 Cambios en `forms.py`
+
+```python
+# ANTES
+"El N° ETA solo admite letras, números y guiones (3 a 30 caracteres)."
+# DESPUÉS
+"El N° de operación solo admite letras, números y guiones (3 a 30 caracteres)."
+```
+
+#### 18.5.4 Cambios en `views.py`
+
+- `ETAList.titulo` → `"Operaciones"`
+- `ETACreate.titulo` → `"Nueva operación"`
+- `ETAUpdate.titulo` → `"Editar operación"`
+- Asunto del email de notificación:
+  ```python
+  # ANTES
+  subject=f"[Estibapp] ETA {eta.numero} → {eta.get_estado_display()}"
+  # DESPUÉS
+  subject=f"[Estibapp] Contenedor {eta.contenedor.codigo} — {eta.get_estado_display()}"
+  ```
+
+#### 18.5.5 Cambios en templates (texto visible únicamente)
+
+| Template | Ocurrencias | Texto actual → Texto nuevo |
+|---|---|---|
+| `dashboard.html` | 5 | "Total ETAs" → "Total operaciones" · "+ Nueva ETA" → "+ Nueva operación" · "ETAs recientes" → "Operaciones recientes" · `label: "ETAs"` (chart) → `"Operaciones"` · "Sin ETAs aún." → "Sin operaciones aún." |
+| `bandeja.html` | 3 | "ETAs en puerto pendientes de asignar..." → "Operaciones en puerto pendientes..." · col `<th>ETA</th>` → `<th>N° Op</th>` · `{% for eta in etas %}` → sin cambio (variable interna) |
+| `eta_lista.html` | 2 | `"Nueva ETA"` → `"Nueva operación"` · col `ETA` → `Contenedor` (reordenando columnas: contenedor primero) |
+| `eta_detalle.html` | 6 | `<title>ETA {{ eta.numero }}` → `<title>{{ eta.contenedor.codigo }} — Estibapp` · `"ETA {{ eta.numero }} · {{ eta.cliente.nombre }}"` → `"Op. {{ eta.numero }}"` (bajado a subtítulo) · el código de contenedor sube a H1 |
+| `patio.html` | 3 | `"ETA:"` → `"Op.:"` · `"Abrir ETA y registrar movimiento"` → `"Ver operación y registrar movimiento"` |
+| `buscar_contenedor.html` | 4 | `"todas sus ETAs"` → `"todas sus operaciones"` · `"N° de ETA"` → `"N° de operación"` · `"Sin ETAs registradas"` → `"Sin operaciones"` · `col <th>ETA</th>` → `<th>N° Op</th>` |
+| `retiro_despacho.html` | 4 | `"Ver ETA"` → `"Ver operación"` · `"Sin ETAs activas."` → `"Sin operaciones activas."` · col `ETA` → `N° Op` · `"ETA{{ total_sel\|pluralize }}"` → `"operación{{ total_sel\|pluralize }}"` |
+| `recuentos.html` | 2 | `"Sin ETAs."` → `"Sin operaciones."` |
+| `conductor_detalle.html` | 2 | col `<th>ETA</th>` → `<th>N° Op</th>` · comentario `{# ETAs próximas #}` → `{# Operaciones próximas #}` |
+
+**Cambio de protagonismo en todas las tablas:** el orden de columnas pasa de `N° ETA \| Cliente \| Contenedor \| Estado` a `Contenedor \| Cliente \| N° Op \| Estado`.
+
+#### 18.5.6 Lo que NO cambia
+
+| Elemento | Razón |
+|---|---|
+| Clase Python `ETA` | Renombrarla invalida el historial de migraciones |
+| Variables `eta`, `etas` en vistas y templates | Cambio masivo sin impacto visual, alto riesgo de error |
+| URLs `etas/`, `eta_detalle`, `eta_crear` | Cambiarlas rompe bookmarks y referencias internas |
+| Campos de BD (`numero`, `estado`, etc.) | Requieren `RenameField` + migración, sin beneficio visible |
+| Archivos de migración existentes | Inmutables por diseño de Django |
+
+---
+
+### 18.6 Resumen de artefactos totales del feature
+
+| Artefacto | Acción | Riesgo |
+|---|---|---|
+| `apps/operaciones/models.py` | Ampliar `Conductor` + nuevo `RegistroConductor` + renombrado `verbose_name`/`__str__` ETA + eliminar `Camion` tras validación | Medio — requiere migración de datos de estados |
+| `apps/operaciones/forms.py` | Actualizar `ConductorForm` + nuevo `RegistroConductorForm` + mensajes ETA | Bajo |
+| `apps/operaciones/views.py` | Actualizar vistas conductor + títulos ETA + asunto email | Bajo |
+| `apps/operaciones/urls.py` | Nuevas rutas para `RegistroConductor` | Bajo |
+| `apps/operaciones/templates/operaciones/` | 9 templates con texto "ETA" visible + `conductor_detalle.html` | Bajo — solo texto |
+| `apps/operaciones/migrations/` | Migración de `Conductor.Estado` + `RegistroConductor` + rename FK `camion → tracto` | Alto — requiere `RunPython` y validación previa |
+| `apps/operaciones/admin.py` | Registrar `RegistroConductor` | Bajo |
+| `apps/flota/` (nuevo) | Crear app completa: `models.py`, `forms.py`, `views.py`, `urls.py`, `admin.py`, `templates/`, `migrations/` | Medio — app nueva, sin tocar código existente |
+| `config/settings/base.py` | Agregar `"apps.flota"` a `INSTALLED_APPS` | Bajo |
+| `config/urls.py` | Incluir `apps.flota.urls` | Bajo |
+
+---
+
+### 18.7 Orden de implementación recomendado (ramas)
+
+```
+develop
+  └─ feature/flota-app              → Nueva app flota (Tracto + SemiRemolque)
+  └─ feature/conductor-enrich       → Ampliación Conductor + RegistroConductor
+  └─ feature/rename-operacion-ui    → Renombrado ETA → Operación en UI
+```
+
+Los tres pueden desarrollarse en paralelo ya que no se pisan entre sí. Se mergean a `develop` y se valida en conjunto antes de pasar a `main`.
+
+**Prerequisito antes de cualquier rama:** crear tag `v1.1-pre-feature01`:
+```bash
+git tag -a v1.1-pre-feature01 -m "Punto estable antes de Feature-01/2026"
+git push origin v1.1-pre-feature01
+```
+
+---
+
+## 18. Evolución de infraestructura — roadmap
+
+### Etapa 1 (actual) — Docker Compose en droplet único
+Adecuado para maqueta y primeros clientes reales con carga baja.
+
+### Etapa 2 — Docker Swarm *(planificado)*
+Cuando la app entre a producción activa con múltiples usuarios, migrar a Swarm sobre el mismo droplet o agregando un segundo nodo. Ventajas:
+
+- Reinicio automático de contenedores caídos sin intervención manual.
+- Rolling deployments sin downtime.
+- Compatible con el `docker-compose.yml` actual (mínimos cambios).
+- Sin infraestructura adicional obligatoria.
+
+Comando de activación:
+```bash
+docker swarm init
+docker stack deploy -c docker-compose.yml estiba
+```
+
+### Etapa 3 — Kubernetes / DOKS *(fase futura)*
+Considerar cuando haya múltiples servicios independientes, equipos paralelos, o necesidad de escalar a decenas de instancias. DigitalOcean Kubernetes Service (DOKS) permite migrar desde Compose usando `kompose`. No prioritario hasta que la carga lo justifique.

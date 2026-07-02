@@ -13,6 +13,7 @@ from .models import (
     Empresa,
     ETA,
     Movimiento,
+    RegistroConductor,
 )
 from .validators import formatear_rut
 
@@ -54,10 +55,24 @@ class EmpresaForm(BootstrapFormMixin, forms.ModelForm):
 class ConductorForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Conductor
-        fields = ["nombre", "empresa", "rut", "telefono"]
+        fields = ["nombre", "empresa", "rut", "licencia",
+                  "fecha_vencimiento_licencia", "telefono", "estado"]
+        widgets = {
+            "fecha_vencimiento_licencia": forms.DateInput(attrs={"type": "date"}),
+        }
 
     def clean_rut(self):
         return formatear_rut(self.cleaned_data.get("rut"))
+
+
+class RegistroConductorForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = RegistroConductor
+        fields = ["tipo", "fecha", "descripcion", "valor"]
+        widgets = {
+            "fecha": forms.DateInput(attrs={"type": "date"}),
+            "descripcion": forms.Textarea(attrs={"rows": 2}),
+        }
 
 
 class CamionForm(BootstrapFormMixin, forms.ModelForm):
@@ -104,7 +119,7 @@ class ETAForm(BootstrapFormMixin, forms.ModelForm):
             "peso",
             # --- Asignación de transporte ---
             "conductor",
-            "camion",
+            "tracto",
             # --- Retiro (puerto) ---
             "fecha_retiro",
             "horario",
@@ -134,11 +149,11 @@ class ETAForm(BootstrapFormMixin, forms.ModelForm):
     # --- Validaciones de entrada (consideración MVP 1) ---
     # Estas reglas evitan datos sucios que después ensucian los informes.
     def clean_numero(self):
-        """N° ETA: solo letras mayúsculas, números y guiones (ej. ETA-2026-0001)."""
+        """N° Operación: solo letras mayúsculas, números y guiones (ej. OPS-2026-0001)."""
         numero = (self.cleaned_data.get("numero") or "").strip().upper()
         if not re.fullmatch(r"[A-Z0-9\-]{3,30}", numero):
             raise forms.ValidationError(
-                "El N° ETA solo admite letras, números y guiones (3 a 30 caracteres)."
+                "El N° Operación solo admite letras, números y guiones (3 a 30 caracteres)."
             )
         return numero
 
@@ -149,6 +164,9 @@ class ETAForm(BootstrapFormMixin, forms.ModelForm):
         # `fecha` es obligatoria en el modelo: se toma del retiro o la entrega.
         eta.fecha = cd.get("fecha_retiro") or cd.get("fecha_entrega") or timezone.now().date()
         eta.hora_retiro = cd.get("horario")
+        # Sincronizar tracto → camion (campo legacy) para compatibilidad con datos viejos.
+        if cd.get("tracto"):
+            eta.camion = cd["tracto"]
         # Espejo para mantener vivos los reportes que usan `deposito`/`puerto`.
         if cd.get("deposito_devolucion"):
             eta.deposito = cd["deposito_devolucion"][:120]

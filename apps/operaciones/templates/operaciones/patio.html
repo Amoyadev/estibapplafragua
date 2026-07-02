@@ -8,7 +8,7 @@
         <h3 class="mb-0">Tablero de patio</h3>
         <p class="text-muted small mb-0">
             Registra ubicaciones cuando el gruero las indica por radio.
-            Avanza el estado desde la ficha de cada ETA.
+            Avanza el estado desde la ficha de cada operación.
         </p>
     </div>
 </div>
@@ -48,10 +48,10 @@
                 </div>
 
                 <ul class="list-unstyled small mb-2">
-                    <li><span class="text-muted">ETA:</span> <strong>{{ eta.numero }}</strong></li>
+                    <li><span class="text-muted">N° op.:</span> <strong>{{ eta.numero }}</strong></li>
                     <li><span class="text-muted">Cliente:</span> {{ eta.cliente.nombre }}</li>
                     <li><span class="text-muted">Conductor:</span> {{ eta.conductor|default:"—" }}</li>
-                    <li><span class="text-muted">Camión:</span> {{ eta.camion.patente|default:"—" }}</li>
+                    <li><span class="text-muted">Tracto:</span> {{ eta.tracto.patente|default:eta.camion.patente|default:"—" }}</li>
                 </ul>
 
                 <div class="mb-2">
@@ -71,7 +71,7 @@
 
                 <a href="{% url 'operaciones:eta_detalle' eta.pk %}"
                    class="btn btn-sm btn-outline-secondary w-100">
-                    <i class="bi bi-arrow-right-circle me-1"></i>Abrir ETA y registrar movimiento
+                    <i class="bi bi-arrow-right-circle me-1"></i>Abrir operación y registrar movimiento
                 </a>
             </div>
         </div>

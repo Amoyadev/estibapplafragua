@@ -37,6 +37,7 @@ DJANGO_APPS = [
 LOCAL_APPS = [
     "apps.core",
     "apps.operaciones",
+    "apps.flota.apps.FlotaConfig",
     "apps.auditoria",
     "apps.comunicaciones",
 ]

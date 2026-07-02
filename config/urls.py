@@ -10,6 +10,7 @@ urlpatterns = [
     path("logout/", core_views.cerrar_sesion, name="logout"),
     path("", include("apps.core.urls")),
     path("app/", include("apps.operaciones.urls")),
+    path("app/flota/", include("apps.flota.urls")),
     path("correos/", include("apps.comunicaciones.urls")),
 ]
 
