@@ -17,10 +17,20 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # 0. Registrar db_table explícita en Camion (ya era el default; no toca la BD)
+        # 0a. Registrar db_table explícita en Camion (ya era el default; no toca la BD)
         migrations.AlterModelTable(
             name="camion",
             table="operaciones_camion",
+        ),
+        # 0b. Marcar Camion como no gestionado (managed=False); tabla queda en manos de flota.Tracto
+        migrations.AlterModelOptions(
+            name="camion",
+            options={
+                "managed": False,
+                "ordering": ["patente"],
+                "verbose_name": "Camión (deprecado)",
+                "verbose_name_plural": "Camiones (deprecados)",
+            },
         ),
         # 1. Agregar columna tracto_id a operaciones_eta
         migrations.AddField(
@@ -35,16 +45,4 @@ class Migration(migrations.Migration):
                 verbose_name="Tracto",
             ),
         ),
-        # 2. Actualizar related_name de camion (solo estado Django, sin cambio de BD)
-        migrations.AlterField(
-            model_name="eta",
-            name="camion",
-            field=models.ForeignKey(
-                "operaciones.Camion",
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="etas_legacy",
-            ),
-        ),
-    ]
+        # 2. Actualizar related_n
