@@ -45,4 +45,16 @@ class Migration(migrations.Migration):
                 verbose_name="Tracto",
             ),
         ),
-        # 2. Actualizar related_n
+        # 2. Actualizar related_name de camion (solo estado Django, sin cambio de BD)
+        migrations.AlterField(
+            model_name="eta",
+            name="camion",
+            field=models.ForeignKey(
+                "operaciones.Camion",
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="etas_legacy",
+            ),
+        ),
+    ]
